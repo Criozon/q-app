@@ -1,0 +1,11 @@
+@keyframes blink-animation {
+  0% { background-color: transparent; }
+  50% { background-color: lightgreen; }
+  100% { background-color: transparent; }
+}
+
+.called-animation {
+  animation-name: blink-animation;
+  animation-duration: 1.5s;
+  animation-iteration-count: infinite;
+}

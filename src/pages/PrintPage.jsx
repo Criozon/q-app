@@ -1,0 +1,57 @@
+import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
+import QRCode from 'qrcode';
+
+function PrintPage() {
+    const { queueId } = useParams();
+    const [queueName, setQueueName] = useState('');
+    const [qrCodeUrl, setQrCodeUrl] = useState('');
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const generateQR = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('queues').select('name').eq('id', queueId).single();
+                if (error) throw error;
+                setQueueName(data.name);
+                const joinUrl = `${window.location.origin}/join/${queueId}`;
+                const qrUrl = await QRCode.toDataURL(joinUrl, { width: 500, margin: 2 });
+                setQrCodeUrl(qrUrl);
+            } catch (err) {
+                console.error("Ошибка при генерации QR", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+        generateQR();
+    }, [queueId]);
+
+    const printStyles = `
+        @media print {
+            body * { visibility: hidden; }
+            #print-section, #print-section * { visibility: visible; }
+            #print-section { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+            button { display: none; }
+        }
+    `;
+
+    if (loading) return <p style={{textAlign: 'center', paddingTop: '40px'}}>Генерация QR-кода...</p>;
+
+    return (
+        <>
+            <style>{printStyles}</style>
+            <div id="print-section" style={{ fontFamily: 'sans-serif', textAlign: 'center', padding: '50px' }}>
+                <h1>Отсканируйте, чтобы встать в очередь:</h1>
+                <h2 style={{ marginBottom: '30px', fontSize: '2.5em' }}>{queueName}</h2>
+                {qrCodeUrl && <img src={qrCodeUrl} alt={`QR-код для очереди ${queueName}`} />}
+                <button onClick={() => window.print()} style={{ marginTop: '40px', padding: '15px 30px', fontSize: '18px', cursor: 'pointer' }}>
+                    🖨️ Распечатать
+                </button>
+            </div>
+        </>
+    );
+}
+
+export default PrintPage;
