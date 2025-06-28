@@ -72,6 +72,14 @@ function WaitPage() {
         log(PAGE_SOURCE, 'Проверка статуса...');
         try {
             const { data, error } = await service.getMemberById(memberId);
+            // Если участника нет, но очередь есть, значит его удалили
+            if (!data && error) {
+                 const { data: queueData } = await service.getQueueById(queueId);
+                 if (queueData) {
+                    clearActiveSession();
+                    throw new Error('Вас удалили из этой очереди.');
+                 }
+            }
             if (error || !data || !data.queues) {
                 clearActiveSession();
                 throw new Error('Очередь, в которой вы находились, была удалена.');
@@ -90,18 +98,28 @@ function WaitPage() {
 
     useEffect(() => {
         const handleRealtimeEvent = (payload) => {
-            log(PAGE_SOURCE, `Получено Realtime ${payload.eventType} событие`);
-            if (payload.eventType === 'DELETE') {
-                log(PAGE_SOURCE, 'Запись участника удалена.');
-                clearActiveSession();
-                setStatus('error');
-                setErrorMessage('Эта очередь была удалена администратором.');
-                service.removeSubscription(channel);
-            } else {
+            log(PAGE_SOURCE, `Получено Realtime ${payload.eventType} событие для всей очереди`);
+            
+            if (payload.table === 'queues' && payload.eventType === 'DELETE') {
+                 log(PAGE_SOURCE, 'Очередь удалена.');
+                 clearActiveSession();
+                 setStatus('error');
+                 setErrorMessage('Эта очередь была удалена администратором.');
+                 service.removeSubscription(memberChannel);
+                 service.removeSubscription(queueChannel); // Отписываемся и отсюда
+                 return;
+            }
+
+            // Если событие касается участников, просто перезапускаем полную проверку
+            if (payload.table === 'queue_members') {
                 checkMyStatus();
             }
         };
-        const channel = service.subscribe(`wait-page-${memberId}`, { event: '*', schema: 'public', table: 'queue_members', filter: `id=eq.${memberId}` }, handleRealtimeEvent);
+
+        // *** ИСПРАВЛЕНИЕ: Слушаем ВСЕ события в таблице участников для ЭТОЙ очереди ***
+        const memberChannel = service.subscribe(`wait-page-members-${queueId}`, { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queueId}` }, handleRealtimeEvent);
+        // Дополнительная подписка на случай удаления самой очереди
+        const queueChannel = service.subscribe(`wait-page-queue-${queueId}`, { event: 'DELETE', schema: 'public', table: 'queues', filter: `id=eq.${queueId}`}, handleRealtimeEvent);
         
         const handlePageShow = (event) => {
             if (event.persisted) {
@@ -117,14 +135,15 @@ function WaitPage() {
 
         window.addEventListener('pageshow', handlePageShow);
         document.addEventListener('visibilitychange', handleVisibilityChange);
-        checkMyStatus();
+        checkMyStatus(); // Первоначальная загрузка
 
         return () => {
-            service.removeSubscription(channel);
+            service.removeSubscription(memberChannel);
+            service.removeSubscription(queueChannel);
             window.removeEventListener('pageshow', handlePageShow);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, [memberId, queueId]);
+    }, [memberId, queueId]); // Зависимости остаются прежними
 
     useEffect(() => {
         if (myInfo) {
