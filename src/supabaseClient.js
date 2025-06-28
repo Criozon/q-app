@@ -1,8 +1,14 @@
 import { createClient } from '@supabase/supabase-js'
 
-// Этот код читает ваши секретные ключи из файла .env.local
-// Убедитесь, что этот файл существует в корне проекта
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+// ВАЖНО: URL и ключ теперь в кавычках, это правильный синтаксис
+const supabaseUrl = 'https://orkpvyenyawrotzrfxeh.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ya3B2eWVueWF3cm90enJmeGVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA4NzA2NzgsImV4cCI6MjA2NjQ0NjY3OH0.ZNX-ftVym8B84qvzb85dYWa96XXFD_LEz73aXSbVEvQ';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Создаем и экспортируем клиент Supabase
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+  },
+});

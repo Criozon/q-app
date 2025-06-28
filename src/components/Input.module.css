@@ -1,0 +1,16 @@
+.input {
+  width: 100%;
+  padding: 16px;
+  font-size: 17px;
+  background-color: #f0f2f5; /* Используем напрямую, т.к. это значение из :root */
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+/* Стили при фокусе */
+.input:focus {
+  border-color: var(--accent-blue);
+}

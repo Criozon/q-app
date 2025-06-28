@@ -1,0 +1,94 @@
+.pageContainer {
+  transition: background-color 0.5s; 
+}
+
+.waitCard {
+  text-align: center;
+  border: 2px solid var(--accent-blue);
+  border-radius: 16px;
+  padding: 30px;
+  margin-top: 40px;
+  transition: border-color 0.3s ease-in-out;
+}
+
+.waitCard.called {
+  border-color: var(--accent-green);
+}
+
+.divider {
+  margin: 15px 0;
+  border: 0;
+  border-top: 1px solid var(--border-color);
+}
+
+.greeting {
+  font-size: 1.2em;
+  color: var(--text-secondary);
+}
+
+.displayCodeLabel {
+  font-size: 1.2em;
+}
+
+.displayCode {
+  color: var(--accent-blue);
+  font-size: 1.5em;
+  font-weight: bold;
+}
+
+.peopleAhead {
+  font-size: 1.5em;
+  margin-top: 10px;
+}
+
+.autoUpdateText {
+  margin-top: 20px;
+  color: var(--text-secondary);
+}
+
+.statusBox {
+  margin-top: 20px;
+  padding: 20px;
+  border-radius: 12px;
+  color: white;
+}
+
+.statusBox h2 {
+  color: white;
+  font-weight: bold;
+}
+
+.statusCalled {
+  background-color: var(--accent-green);
+}
+
+.statusServiced {
+  background-color: var(--text-secondary);
+}
+
+.errorContainer {
+  text-align: center;
+  padding: 40px 20px;
+  margin-top: 40px;
+  border: 2px solid var(--accent-red);
+  border-radius: 16px;
+  font-size: 1.2em;
+  color: var(--text-primary);
+  background-color: var(--card-background);
+}
+
+/* ... (все ваши существующие стили) */
+
+.leaveButton {
+  margin-top: 30px;
+  background-color: #e5e5e5 !important; /* Делаем ее серой */
+  color: var(--text-primary) !important;
+  font-weight: 500 !important;
+  width: auto !important; /* Кнопка будет по ширине контента */
+  padding-left: 24px !important;
+  padding-right: 24px !important;
+}
+
+.leaveButton:hover:not(:disabled) {
+  background-color: #d1d1d6 !important;
+}

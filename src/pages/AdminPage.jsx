@@ -1,161 +1,246 @@
-import { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
 import QRCode from 'qrcode';
-import { QrCode, Check, PhoneCall, UserX, ChevronRight, Copy, Printer } from 'lucide-react';
+import { QrCode, Check, PhoneCall, UserX, ChevronRight, MoreVertical } from 'lucide-react';
 
 import Card from '../components/Card';
 import Modal from '../components/Modal';
 import Button from '../components/Button';
-import Section from '../components/Section';
+import styles from './AdminPage.module.css';
+import log from '../utils/logger';
+
+const PAGE_SOURCE = 'AdminPage';
 
 function AdminPage() {
     const { secretKey } = useParams();
+    const navigate = useNavigate();
     const [queue, setQueue] = useState(null);
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [isModalOpen, setIsModalOpen] = useState(true);
+    const [error, setError] = useState(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
     const [qrCodeUrl, setQrCodeUrl] = useState('');
     const [joinUrl, setJoinUrl] = useState('');
     const [isButtonLoading, setIsButtonLoading] = useState(false);
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     const listRef = useRef(null);
+    const menuRef = useRef(null);
+
     const calledMember = members.find(m => m.status === 'called');
     const waitingMembersCount = members.filter(m => m.status === 'waiting').length;
 
-    const handleMainButtonClick = async () => {
-        setIsButtonLoading(true);
-        if (calledMember) {
-            setMembers(prev => prev.map(m => m.id === calledMember.id ? { ...m, status: 'serviced' } : m));
-            await supabase.from('queue_members').update({ status: 'serviced' }).eq('id', calledMember.id);
-        } else {
-            const nextMember = members.find(m => m.status === 'waiting');
-            if (nextMember) {
-                setMembers(prev => prev.map(m => m.id === nextMember.id ? { ...m, status: 'called' } : m));
-                await supabase.from('queue_members').update({ status: 'called' }).eq('id', nextMember.id);
-            }
-        }
-        setIsButtonLoading(false);
-    };
-    const handleCallSpecific = async (memberId) => {
-        if (calledMember) { toast.error('Завершите текущее обслуживание.'); return; }
-        setIsButtonLoading(true);
-        setMembers(prev => prev.map(m => m.id === memberId ? { ...m, status: 'called' } : m));
-        await supabase.from('queue_members').update({ status: 'called' }).eq('id', memberId);
-        setIsButtonLoading(false);
-    };
-    const handleRemoveMember = async (memberId) => {
-        if (window.confirm('Удалить участника?')) {
-            setMembers(currentMembers => currentMembers.filter(m => m.id !== memberId));
-            await supabase.from('queue_members').delete().eq('id', memberId);
-        }
-    };
-    const handleShare = () => {
-        if (navigator.share) {
-            navigator.share({ title: `Очередь: ${queue.name}`, url: joinUrl });
-        } else {
-            navigator.clipboard.writeText(joinUrl);
-            toast.success('Ссылка скопирована!');
-        }
-    };
+    const fetchAllData = useCallback(async (showLoader = false) => {
+        if (showLoader) setLoading(true);
+        setError(null);
+        log(PAGE_SOURCE, 'Загрузка всех данных...');
+        try {
+            const { data: qData, error: qError } = await supabase
+                .from('queues').select('*').eq('admin_secret_key', secretKey).single();
+            if (qError || !qData) throw new Error("Очередь не найдена или была удалена.");
+            setQueue(qData);
 
-    useEffect(() => {
-        const fetchInitialData = async () => {
-            setLoading(true);
-            try {
-                const { data: qData, error: qError } = await supabase.from('queues').select('*').eq('admin_secret_key', secretKey).single();
-                if (qError || !qData) throw new Error("Очередь не найдена.");
-                setQueue(qData);
+            const { data: mData, error: mError } = await supabase
+                .from('queue_members').select('*').eq('queue_id', qData.id).order('ticket_number');
+            if (mError) throw new Error("Не удалось загрузить участников.");
+            setMembers(mData || []);
+
+            if (showLoader) {
                 const currentJoinUrl = `${window.location.origin}/join/${qData.id}`;
                 setJoinUrl(currentJoinUrl);
                 const qrUrl = await QRCode.toDataURL(currentJoinUrl);
                 setQrCodeUrl(qrUrl);
-            } catch (error) {
-                setQueue(null);
+                if (mData.length === 0) setIsModalOpen(true);
             }
-        };
-        fetchInitialData();
+        } catch (err) {
+            log(PAGE_SOURCE, 'Ошибка при загрузке:', err.message);
+            setError(err.message);
+            setQueue(null);
+        } finally {
+            if (showLoader) setLoading(false);
+        }
     }, [secretKey]);
-    
+
     useEffect(() => {
         if (!queue) {
-            if (loading) setLoading(false);
             return;
         }
-        const fetchMembers = async () => {
-            const { data } = await supabase.from('queue_members').select('*').eq('queue_id', queue.id).order('ticket_number');
-            setMembers(data || []);
-            setLoading(false);
+        const handleRealtimeEvent = (payload) => {
+            log(PAGE_SOURCE, `Realtime событие ${payload.eventType} получено`);
+            if (payload.eventType === 'INSERT') {
+                setMembers(currentMembers => [...currentMembers, payload.new].sort((a,b) => a.ticket_number - b.ticket_number));
+            }
+            if (payload.eventType === 'UPDATE') {
+                setMembers(currentMembers => currentMembers.map(m => m.id === payload.new.id ? payload.new : m));
+            }
+            if (payload.eventType === 'DELETE') {
+                setMembers(currentMembers => currentMembers.filter(m => m.id !== payload.old.id));
+            }
         };
-        fetchMembers();
-        const channel = supabase.channel(`admin-rt-${queue.id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queue.id}` }, fetchMembers).subscribe();
-        return () => supabase.removeChannel(channel);
-    }, [queue, loading]);
 
-    if (loading) return <div className="container" style={{textAlign: 'center', paddingTop: '40px'}}>Загрузка...</div>;
-    if (!queue) return <div className="container" style={{textAlign: 'center', paddingTop: '40px'}}>Ошибка.</div>;
+        const channel = supabase.channel(`admin-page-${queue.id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queue.id}` }, handleRealtimeEvent)
+            .subscribe(status => log(PAGE_SOURCE, `Статус подписки: ${status}`));
+        
+        return () => {
+            log(PAGE_SOURCE, 'Очистка подписки на Realtime');
+            supabase.removeChannel(channel);
+        };
+    }, [queue]);
+
+    useEffect(() => {
+        const handlePageShow = (event) => {
+            if (event.persisted) {
+                log(PAGE_SOURCE, 'Страница восстановлена из bfcache, принудительно обновляем.');
+                fetchAllData(true);
+            }
+        };
+        
+        const handleClickOutside = (event) => {
+            if (menuRef.current && !menuRef.current.contains(event.target)) {
+                setIsMenuOpen(false);
+            }
+        };
+
+        window.addEventListener('pageshow', handlePageShow);
+        document.addEventListener('mousedown', handleClickOutside);
+        
+        fetchAllData(true);
+        
+        return () => {
+            window.removeEventListener('pageshow', handlePageShow);
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [fetchAllData]);
+
+    const autoScroll = useCallback(() => { /* ... */ }, [members]);
+    useEffect(() => { autoScroll(); }, [members, autoScroll]);
+
+    const handleMainButtonClick = async () => {
+        setIsButtonLoading(true);
+        const memberToUpdate = calledMember || members.find(m => m.status === 'waiting');
+        if (memberToUpdate) {
+            const newStatus = calledMember ? 'serviced' : 'called';
+            await supabase.from('queue_members').update({ status: newStatus }).eq('id', memberToUpdate.id);
+        }
+        setIsButtonLoading(false);
+    };
     
+    const handleCallSpecific = async (memberId) => {
+        if (calledMember) { toast.error('Завершите текущее обслуживание.'); return; }
+        await supabase.from('queue_members').update({ status: 'called' }).eq('id', memberId);
+    };
+    
+    const handleRemoveMember = async (memberId) => {
+        if (window.confirm('Удалить участника?')) {
+            await supabase.from('queue_members').delete().eq('id', memberId);
+        }
+    };
+
+    const handleDeleteCurrentQueue = () => {
+        setIsMenuOpen(false);
+        if (!queue) return;
+
+        toast((t) => (
+            <div>
+                <p style={{ fontWeight: 500, margin: 0 }}>Вы уверены, что хотите удалить очередь <strong style={{color: 'var(--text-primary)'}}>{queue.name}</strong>? Это действие необратимо.</p>
+                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px' }}>
+                    <Button onClick={() => toast.dismiss(t.id)} className={styles.toastButtonCancel}>Отмена</Button>
+                    <Button
+                        className={styles.toastButtonConfirm}
+                        onClick={() => {
+                            toast.dismiss(t.id);
+                            const toastId = toast.loading(`Удаляем очередь "${queue.name}"...`)
+                            const performDelete = async () => {
+                                const { error } = await supabase.rpc('delete_queue_and_members', {
+                                    queue_id_to_delete: queue.id
+                                });
+
+                                if (error) {
+                                    toast.error(`Не удалось удалить очередь "${queue.name}".`, { id: toastId });
+                                } else {
+                                    const savedQueuesRaw = localStorage.getItem('my-queues');
+                                    if (savedQueuesRaw) {
+                                        let myQueues = JSON.parse(savedQueuesRaw);
+                                        myQueues = myQueues.filter(q => q.id !== queue.id);
+                                        localStorage.setItem('my-queues', JSON.stringify(myQueues));
+                                    }
+                                    toast.success(`Очередь "${queue.name}" удалена.`, { id: toastId });
+                                    navigate('/');
+                                }
+                            };
+                            performDelete();
+                        }}>
+                        Да, удалить
+                    </Button>
+                </div>
+            </div>
+        ), { duration: 8000, position: 'top-center' });
+    };
+    
+    const handleShare = () => { /* ... */ };
+
+    if (loading) return <div className="container" style={{ textAlign: 'center', paddingTop: '40px' }}>Загрузка...</div>;
+    if (error) return <div className="container" style={{ textAlign: 'center', paddingTop: '40px' }}>{error}</div>;
+
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: 'var(--background)' }}>
-            <header style={{ padding: '12px 0', backgroundColor: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(20px)', borderBottom: '1px solid var(--border-color)', position: 'sticky', top: 0, zIndex: 10 }}>
-                <div className="container" style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
-                    <div style={{width: '44px'}}></div>
-                    <h1 style={{ fontSize: '17px', fontWeight: '600', margin: 0 }}>{queue.name}</h1>
-                    <button onClick={() => setIsModalOpen(true)} style={{background: 'none', border: 'none', padding: '8px', cursor: 'pointer', height: '44px', width: '44px'}}>
-                        <QrCode size={24} color="var(--accent-blue)" />
-                    </button>
+        <div className={styles.pageWrapper}>
+            <header className={styles.header}>
+                <div className={`container ${styles.headerContent}`}>
+                    <div ref={menuRef} className={styles.adminMenuContainer}>
+                        <button onClick={() => setIsMenuOpen(!isMenuOpen)} className={styles.menuButton}>
+                            <MoreVertical size={24} color="var(--accent-blue)" />
+                        </button>
+                        {isMenuOpen && (
+                            <div className={styles.dropdownMenu}>
+                                <button onClick={handleDeleteCurrentQueue} className={styles.dropdownMenuItem}>
+                                    <UserX size={16} /> Удалить очередь
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                    <div className={styles.headerCenter}>
+                        <h1 className={styles.headerTitle}>{queue?.name}</h1>
+                        <p className={styles.queueCount}>В очереди: {waitingMembersCount}</p>
+                    </div>
+                    <button onClick={() => setIsModalOpen(true)} className={styles.qrButton}><QrCode size={24} color="var(--accent-blue)" /></button>
                 </div>
             </header>
-            
-            <main ref={listRef} className="container" style={{ flex: 1, overflowY: 'auto', padding: '20px 0', paddingBottom: '120px' }}>
-                <Section title={`В очереди (${waitingMembersCount})`}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        {members.map(member => (
-                            <Card id={`member-${member.id}`} key={member.id} style={{ 
-                                padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                transition: 'all 0.3s ease',
-                                borderLeft: member.status === 'called' ? `4px solid var(--accent-green)` : '4px solid transparent',
-                                opacity: member.status === 'serviced' ? 0.4 : 1,
-                            }}>
-                                <div>
-                                    <p style={{fontSize: '18px', fontWeight: '600', textDecoration: member.status === 'serviced' ? 'line-through' : 'none'}}>
-                                        {member.display_code || `#${member.ticket_number}`} - {member.member_name}
-                                    </p>
-                                    <p style={{fontSize: '14px', color: 'var(--text-secondary)'}}>
-                                        {member.status === 'called' ? 'Вызывается...' : (member.status === 'serviced' ? 'Обслужен' : 'Ожидает')}
-                                    </p>
-                                </div>
-                                <div style={{display: 'flex', gap: '8px'}}>
-                                    {member.status === 'waiting' && <Button onClick={() => handleCallSpecific(member.id)} disabled={!!calledMember || isButtonLoading} style={{padding: '8px', backgroundColor: '#6e6e73', width: 'auto'}} title="Приоритетный вызов"><ChevronRight size={20}/></Button>}
-                                    <Button onClick={() => handleRemoveMember(member.id)} disabled={isButtonLoading} style={{padding: '8px', backgroundColor: 'var(--accent-red)', width: 'auto'}} title="Удалить"><UserX size={20}/></Button>
-                                </div>
-                            </Card>
-                        ))}
-                        {members.length === 0 && <p style={{textAlign: 'center', color: 'var(--text-secondary)', padding: '20px'}}>В очереди пока никого нет.</p>}
-                    </div>
-                </Section>
+            <main ref={listRef} className={`container ${styles.mainContent}`}>
+                <div className={styles.memberList}>
+                    {members.map(member => {
+                        const memberCardClasses = [ styles.memberCard, member.status === 'called' && styles.called, member.status === 'serviced' && styles.serviced ].filter(Boolean).join(' ');
+                        return (
+                            <div id={`member-${member.id}`} key={member.id}>
+                                <Card className={memberCardClasses}>
+                                    <div className={styles.memberInfo}>
+                                        <p className={styles.memberName}>{member.display_code || `#${member.ticket_number}`} - {member.member_name}</p>
+                                        <p className={styles.memberStatus}>{member.status === 'called' ? 'Вызывается...' : (member.status === 'serviced' ? 'Обслужен' : 'Ожидает')}</p>
+                                    </div>
+                                    <div className={styles.memberActions}>
+                                        {member.status === 'waiting' && <Button onClick={() => handleCallSpecific(member.id)} disabled={!!calledMember || isButtonLoading} className={`${styles.actionButton} ${styles.priorityCallButton}`} title="Приоритетный вызов"><ChevronRight size={20} /></Button>}
+                                        <Button onClick={() => handleRemoveMember(member.id)} disabled={isButtonLoading} className={`${styles.actionButton} ${styles.removeButton}`} title="Удалить"><UserX size={20} /></Button>
+                                    </div>
+                                </Card>
+                            </div>
+                        )
+                    })}
+                    {members.length === 0 && <p className={styles.emptyQueueText}>В очереди пока никого нет.</p>}
+                </div>
             </main>
-
-            <footer style={{ padding: '16px 0', backgroundColor: 'var(--card-background)', borderTop: '1px solid var(--border-color)', position: 'sticky', bottom: 0, zIndex: 10 }}>
+            <footer className={styles.footer}>
                 <div className="container">
-                    <Button 
-                        onClick={handleMainButtonClick} 
-                        disabled={(!calledMember && waitingMembersCount === 0) || isButtonLoading} 
-                        style={{backgroundColor: calledMember ? 'var(--accent-green)' : 'var(--accent-blue)'}}
-                    >
-                        {isButtonLoading ? '...' : (calledMember ? 
-                            <><Check size={20} /> Завершить ({calledMember.display_code || calledMember.ticket_number})</> : 
-                            <><PhoneCall size={20}/> Вызвать следующего</>
-                        )}
+                    <Button onClick={handleMainButtonClick} disabled={(!calledMember && waitingMembersCount === 0) || isButtonLoading} style={{ backgroundColor: calledMember ? 'var(--accent-green)' : 'var(--accent-blue)' }}>
+                        {isButtonLoading ? '...' : (calledMember ? <><Check size={20} /> Завершить ({calledMember.display_code || calledMember.ticket_number})</> : <><PhoneCall size={20} /> Вызвать следующего</>)}
                     </Button>
                 </div>
             </footer>
-
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Покажите QR-код или отправьте ссылку">
-                <div style={{textAlign: 'center'}}>
-                    {qrCodeUrl && <img src={qrCodeUrl} alt="QR Code" style={{width: '100%', maxWidth: '300px', borderRadius: '8px', display: 'block', margin: '0 auto'}}/>}
-                    <p style={{margin: '16px 0', wordBreak: 'break-all'}}>{joinUrl}</p>
+                <div className={styles.modalContent}>
+                    {qrCodeUrl && <img src={qrCodeUrl} alt="QR Code" className={styles.qrImage} />}
+                    <p className={styles.joinLink}>{joinUrl}</p>
                     <Button onClick={handleShare}>Поделиться</Button>
                 </div>
             </Modal>

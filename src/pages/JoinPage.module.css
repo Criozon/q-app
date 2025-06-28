@@ -1,0 +1,48 @@
+.pageContainer {
+  padding-top: 40px;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.subheading {
+  font-size: 18px;
+  color: var(--text-secondary);
+}
+
+.title {
+  font-size: 32px;
+  margin-top: 5px;
+}
+
+.description {
+  font-size: 18px;
+  color: var(--text-secondary);
+  margin-top: 10px;
+}
+
+.formContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.errorText {
+  color: var(--accent-red);
+  text-align: center;
+  padding-top: 40px;
+}
+
+/* ... (ваши существующие стили) */
+
+.secondaryButton {
+  background-color: #e5e5e5 !important;
+  color: var(--text-primary) !important;
+  font-weight: 500 !important;
+}
+
+.secondaryButton:hover:not(:disabled) {
+  background-color: #d1d1d6 !important;
+}

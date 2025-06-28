@@ -1,17 +1,10 @@
 import React from 'react';
+import styles from './Section.module.css';
 
 function Section({ title, children }) {
-    const sectionStyle = {
-        marginTop: '32px',
-    };
-    const titleStyle = {
-        fontSize: '22px',
-        fontWeight: '600',
-        marginBottom: '16px',
-    };
     return (
-        <div style={sectionStyle}>
-            <h2 style={titleStyle}>{title}</h2>
+        <div className={styles.section}>
+            <h2 className={styles.title}>{title}</h2>
             {children}
         </div>
     );

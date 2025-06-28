@@ -1,40 +1,21 @@
 import React from 'react';
+import styles from './Input.module.css'; // 1. Импортируем CSS-модуль
 
-function Input({ value, onChange, placeholder, type = 'text', onKeyPress }) {
-  const [isFocused, setIsFocused] = React.useState(false);
-
-  const style = {
-    input: {
-      width: '100%',
-      padding: '16px',
-      fontSize: '17px',
-      backgroundColor: '#f0f2f5',
-      border: '1px solid #d1d1d6',
-      borderRadius: '12px',
-      boxSizing: 'border-box',
-      outline: 'none',
-      transition: 'border-color 0.2s',
-    },
-    focus: {
-      borderColor: 'var(--accent-blue, #007aff)',
-    }
-  };
-
-  const inputStyle = {
-    ...style.input,
-    ...(isFocused ? style.focus : {}),
-  };
+function Input({ value, onChange, placeholder, type = 'text', onKeyPress, style }) {
+  // 2. Убираем стейт `isFocused` и все объекты стилей (style, focus, inputStyle).
+  // Логика фокуса теперь полностью в CSS-файле.
 
   return (
     <input
+      // 3. Используем `className` вместо `style`
+      className={styles.input}
       type={type}
       value={value}
       onChange={onChange}
       placeholder={placeholder}
-      style={inputStyle}
-      onFocus={() => setIsFocused(true)}
-      onBlur={() => setIsFocused(false)}
+      // 4. Убираем onFocus и onBlur, они больше не нужны для стилизации
       onKeyPress={onKeyPress}
+      style={style} // Добавляем проброс style для кастомизации
     />
   );
 }

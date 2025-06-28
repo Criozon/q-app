@@ -1,13 +1,116 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react'; // <-- ВОТ ИСПРАВЛЕНИЕ
+import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
+import { Trash2 } from 'lucide-react';
+
+import styles from './HomePage.module.css';
+import Section from '../components/Section';
+import Card from '../components/Card';
+import log from '../utils/logger';
 
 function HomePage() {
   const [queueName, setQueueName] = useState('');
-  const [queueDescription, setQueueDescription] = useState(''); // Для описания
+  const [queueDescription, setQueueDescription] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [myQueues, setMyQueues] = useState([]);
   const navigate = useNavigate();
+
+  // Используем useRef, чтобы предотвратить двойной вызов в StrictMode
+  const sessionCheckRef = useRef(false);
+
+  useEffect(() => {
+    // Этот useEffect загружает очереди администратора
+    try {
+      const savedQueuesRaw = localStorage.getItem('my-queues');
+      if (savedQueuesRaw) {
+        setMyQueues(JSON.parse(savedQueuesRaw));
+      }
+    } catch (error) {
+      log('HomePage', 'Ошибка загрузки очередей админа', 'error');
+      localStorage.removeItem('my-queues');
+    }
+
+    // Проверяем активную сессию участника
+    const checkActiveSession = async () => {
+      try {
+        const sessionRaw = localStorage.getItem('my-queue-session');
+        if (!sessionRaw) return;
+
+        const { memberId, queueId } = JSON.parse(sessionRaw);
+        log('HomePage', 'Найдена сессия участника, проверяем актуальность...');
+
+        const { data, error } = await supabase
+          .from('queue_members')
+          .select('status, queues(name)')
+          .eq('id', memberId)
+          .single();
+
+        if (error || !data || data.status === 'serviced') {
+          log('HomePage', 'Сессия неактуальна, очищаем localStorage');
+          localStorage.removeItem('my-queue-session');
+          return;
+        }
+
+        if (data.status === 'waiting' || data.status === 'called') {
+          const queueName = data.queues?.name || '...';
+          
+          toast((t) => (
+            <div className={styles.toastContainer}>
+              <span>У вас есть активное место в очереди <strong>"{queueName}"</strong>. Вернуться?</span>
+              <div className={styles.toastButtons}>
+                <button
+                  className={`${styles.toastButton} ${styles.toastButtonConfirm}`}
+                  onClick={() => {
+                    navigate(`/wait/${queueId}/${memberId}`);
+                    toast.dismiss(t.id);
+                  }}>
+                  Да, вернуться
+                </button>
+                <button
+                  className={`${styles.toastButton} ${styles.toastButtonCancel}`}
+                  onClick={async () => {
+                    toast.dismiss(t.id);
+                    const toastId = toast.loading('Выходим из очереди...');
+                    
+                    const { error: deleteError } = await supabase
+                      .from('queue_members')
+                      .delete()
+                      .eq('id', memberId);
+
+                    toast.dismiss(toastId);
+
+                    if (deleteError) {
+                      toast.error('Не удалось выйти из очереди.');
+                    } else {
+                      localStorage.removeItem('my-queue-session');
+                      toast.success('Вы успешно вышли из очереди.');
+                    }
+                  }}>
+                  Нет, выйти
+                </button>
+              </div>
+            </div>
+          ), { 
+              id: 'restore-session-toast',
+              duration: 15000, 
+              position: "top-center" 
+          });
+        }
+      } catch (e) {
+        log('HomePage', 'Ошибка проверки сессии участника', 'error');
+        localStorage.removeItem('my-queue-session');
+      }
+    };
+
+    if (process.env.NODE_ENV === 'development') {
+        if (sessionCheckRef.current) return;
+        sessionCheckRef.current = true;
+    }
+    
+    checkActiveSession();
+
+  }, [navigate]);
 
   const handleCreateQueue = async () => {
     if (!queueName.trim()) {
@@ -22,12 +125,63 @@ function HomePage() {
       if (error) throw error;
       
       toast.success('Очередь создана!', { id: toastId });
+
+      const newQueue = { 
+        id: data.id, 
+        name: data.name, 
+        admin_secret_key: data.admin_secret_key 
+      };
+      const updatedQueues = [newQueue, ...myQueues];
+      setMyQueues(updatedQueues);
+      localStorage.setItem('my-queues', JSON.stringify(updatedQueues));
+      
       navigate(`/admin/${data.admin_secret_key}`);
     } catch (error) {
       toast.error('Не удалось создать очередь.', { id: toastId });
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleDeleteQueue = (queueToDeleteId, queueName) => {
+    const originalQueues = [...myQueues];
+    toast((t) => (
+      <div className={styles.toastContainer}>
+        <span>Вы уверены, что хотите удалить очередь <strong>"{queueName}"</strong>? Это действие необратимо.</span>
+        <div className={styles.toastButtons}>
+          <button 
+            className={`${styles.toastButton} ${styles.toastButtonConfirm}`}
+            onClick={() => {
+              const updatedQueues = myQueues.filter(q => q.id !== queueToDeleteId);
+              setMyQueues(updatedQueues);
+              localStorage.setItem('my-queues', JSON.stringify(updatedQueues));
+              toast.dismiss(t.id);
+              const performDelete = async () => {
+                  const { error } = await supabase.rpc('delete_queue_and_members', {
+                    queue_id_to_delete: queueToDeleteId
+                  });
+                  if (error) {
+                    toast.error(`Не удалось удалить очередь "${queueName}".`);
+                    setMyQueues(originalQueues);
+                    localStorage.setItem('my-queues', JSON.stringify(originalQueues));
+                  } else {
+                    toast.success(`Очередь "${queueName}" успешно удалена.`);
+                  }
+              };
+              performDelete();
+          }}>
+            Удалить
+          </button>
+          <button 
+            className={`${styles.toastButton} ${styles.toastButtonCancel}`}
+            onClick={() => toast.dismiss(t.id)}>
+            Отмена
+          </button>
+        </div>
+      </div>
+    ), {
+      duration: 6000,
+    });
   };
 
   const handleKeyPress = (event) => {
@@ -37,48 +191,63 @@ function HomePage() {
   };
 
   return (
-    // --- ВОТ ОН, ПРАВИЛЬНЫЙ КЛАСС КОНТЕЙНЕРА ---
-    <div className="container" style={{ paddingTop: '60px' }}>
-      <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-        <h1 style={{ fontSize: '48px', fontWeight: '700' }}>Q-App</h1>
-        <p style={{ fontSize: '20px', color: 'var(--text-secondary)', marginTop: '10px', maxWidth: '400px', margin: '10px auto 0' }}>
+    <div className={`container ${styles.pageContainer}`}>
+      <div className={styles.header}>
+        <h1 className={styles.title}>Q-App</h1>
+        <p className={styles.subtitle}>
           Создайте электронную очередь для любого события за 10 секунд.
         </p>
       </div>
-
-      <div style={{ backgroundColor: 'var(--card-background)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border-color)', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div className={styles.creationCard}>
+        <div className={styles.form}>
           <input 
+            className={styles.input}
             placeholder="Название вашей очереди (обязательно)"
             value={queueName}
             onChange={(e) => setQueueName(e.target.value)}
             onKeyPress={handleKeyPress}
-            style={{ width: '100%', padding: '12px', fontSize: '16px', border: '1px solid var(--border-color)', borderRadius: '8px', boxSizing: 'border-box' }}
           />
           <textarea
+            className={styles.textarea}
             placeholder="Описание или условия (необязательно)"
             value={queueDescription}
             onChange={(e) => setQueueDescription(e.target.value)}
             rows="3"
-            style={{ width: '100%', padding: '12px', fontSize: '16px', border: '1px solid var(--border-color)', borderRadius: '8px', boxSizing: 'border-box', fontFamily: 'inherit' }}
           />
           <button 
+            className={styles.button}
             onClick={handleCreateQueue}
             disabled={isLoading || !queueName.trim()}
-            style={{ 
-              padding: '12px', fontSize: '16px', fontWeight: '600',
-              backgroundColor: 'var(--accent-blue)', color: 'white', 
-              border: 'none', borderRadius: '8px', cursor: 'pointer' 
-            }}
           >
             {isLoading ? 'Создание...' : 'Создать очередь'}
           </button>
         </div>
       </div>
-      
-      <p style={{ textAlign: 'center', color: 'var(--text-secondary)', marginTop: '20px' }}>
+      <p className={styles.footerText}>
         Бесплатно. Без регистрации. Просто.
       </p>
+      {myQueues.length > 0 && (
+        <Section title="Мои очереди">
+          <div className={styles.myQueuesList}>
+            {myQueues.map((queue) => (
+              <div key={queue.id} className={styles.queueItemContainer}>
+                <Link to={`/admin/${queue.admin_secret_key}`} className={styles.queueLink}>
+                  <Card className={styles.queueLinkCard}>
+                    {queue.name}
+                  </Card>
+                </Link>
+                <button 
+                    className={styles.deleteButton} 
+                    onClick={() => handleDeleteQueue(queue.id, queue.name)}
+                    title={`Удалить очередь "${queue.name}"`}
+                >
+                    <Trash2 size={20} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
     </div>
   );
 }

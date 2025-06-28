@@ -1,15 +1,14 @@
 import React from 'react';
+import styles from './Card.module.css';
 
-function Card({ children, style }) {
-    const cardStyle = {
-        backgroundColor: 'var(--card-background, white)',
-        borderRadius: '12px',
-        padding: '20px',
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)',
-        ...style
-    };
+// 1. Добавляем `className` в пропсы
+function Card({ children, style, className }) {
+
+    // 2. Объединяем классы
+    const combinedClassName = [styles.card, className].filter(Boolean).join(' ');
+
     return (
-        <div style={cardStyle}>
+        <div className={combinedClassName} style={style}>
             {children}
         </div>
     );

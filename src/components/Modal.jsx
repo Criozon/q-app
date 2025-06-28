@@ -1,42 +1,28 @@
 import React from 'react';
 import { X } from 'lucide-react';
+import styles from './Modal.module.css'; // 1. Импортируем модуль
 
 function Modal({ isOpen, onClose, title, children }) {
-    // --- ДАТЧИК 1 ---
+    // Датчики для отладки можно оставить, они полезны
     console.log(`--- Modal: Состояние isOpen: ${isOpen}`);
 
     if (!isOpen) {
         return null;
     }
 
-    // --- ДАТЧИК 2 ---
     console.log(`--- Modal: Рендерится с заголовком: "${title}"`);
 
-    const backdropStyle = {
-        position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
-        backgroundColor: 'rgba(0, 0, 0, 0.6)',
-        display: 'flex', justifyContent: 'center', alignItems: 'center',
-        zIndex: 1000,
-    };
-    const modalStyle = {
-        backgroundColor: 'var(--background, #f0f2f5)',
-        padding: '20px', borderRadius: '16px', width: '90%', maxWidth: '400px',
-        boxShadow: '0 10px 30px rgba(0, 0, 0, 0.1)', position: 'relative',
-    };
-    const closeButtonStyle = {
-        position: 'absolute', top: '10px', right: '10px',
-        background: '#e5e5e5', borderRadius: '50%', width: '30px', height: '30px',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        cursor: 'pointer', border: 'none'
-    };
+    // 2. Все объекты стилей (backdropStyle, modalStyle и т.д.) удалены
 
     return (
-        <div style={backdropStyle} onClick={() => { console.log('--- Modal: Клик по фону, закрываем...'); onClose(); }}>
-            <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
-                <button style={closeButtonStyle} onClick={() => { console.log('--- Modal: Нажата кнопка X, закрываем...'); onClose(); }}>
+        // 3. Заменяем `style` на `className`
+        <div className={styles.backdrop} onClick={() => { console.log('--- Modal: Клик по фону, закрываем...'); onClose(); }}>
+            <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+                <button className={styles.closeButton} onClick={() => { console.log('--- Modal: Нажата кнопка X, закрываем...'); onClose(); }}>
                     <X size={18} />
                 </button>
-                <h2 style={{ fontSize: '22px', fontWeight: '600', marginBottom: '20px', textAlign: 'center' }}>{title}</h2>
+                {/* Для заголовка тоже используем класс */}
+                <h2 className={styles.title}>{title}</h2>
                 {children}
             </div>
         </div>

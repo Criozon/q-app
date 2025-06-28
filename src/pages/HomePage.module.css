@@ -1,0 +1,170 @@
+.pageContainer {
+  padding-top: 60px;
+  /* Добавим отступ снизу, чтобы было место для нового списка */
+  padding-bottom: 60px; 
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.title {
+  font-size: 48px;
+  font-weight: 700;
+}
+
+.subtitle {
+  font-size: 20px;
+  color: var(--text-secondary);
+  margin: 10px auto 0;
+  max-width: 400px;
+}
+
+.creationCard {
+  background-color: var(--card-background);
+  padding: 20px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.input {
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+
+.textarea {
+  width: 100%;
+  padding: 12px;
+  font-size: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-sizing: border-box;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.button {
+  padding: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  background-color: var(--accent-blue);
+  color: white; 
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s, opacity 0.2s;
+}
+
+.button:disabled {
+  background-color: #a0a0a0;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.footerText {
+  text-align: center;
+  color: var(--text-secondary);
+  margin-top: 20px;
+}
+
+.myQueuesList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.queueItemContainer {
+  position: relative;
+  display: flex;
+}
+
+.queueLink {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  flex-grow: 1;
+}
+
+.queueLinkCard {
+  transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  font-weight: 500;
+  padding: 16px !important;
+}
+
+.queueLinkCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
+}
+
+.deleteButton {
+  position: absolute;
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+}
+
+.deleteButton:hover {
+  background-color: #f0f2f5;
+  color: var(--accent-red);
+}
+
+.toastContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 15px;
+}
+
+.toastContainer strong {
+  color: var(--text-primary);
+}
+
+.toastButtons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.toastButton {
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.toastButtonConfirm {
+  background-color: var(--accent-red);
+  color: white;
+}
+.toastButtonConfirm:hover {
+  background-color: #d93228;
+}
+
+.toastButtonCancel {
+  background-color: #e5e5e5;
+  color: var(--text-primary);
+}
+.toastButtonCancel:hover {
+  background-color: #d1d1d6;
+}
