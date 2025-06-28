@@ -1,182 +1,164 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import QRCode from 'qrcode';
 import toast from 'react-hot-toast';
+import QRCode from 'qrcode';
+import { QrCode, Check, PhoneCall, UserX, ChevronRight, Copy, Printer } from 'lucide-react';
+
+import Card from '../components/Card';
+import Modal from '../components/Modal';
+import Button from '../components/Button';
+import Section from '../components/Section';
 
 function AdminPage() {
     const { secretKey } = useParams();
     const [queue, setQueue] = useState(null);
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(true);
     const [qrCodeUrl, setQrCodeUrl] = useState('');
+    const [joinUrl, setJoinUrl] = useState('');
+    const [isButtonLoading, setIsButtonLoading] = useState(false);
 
+    const listRef = useRef(null);
     const calledMember = members.find(m => m.status === 'called');
     const waitingMembersCount = members.filter(m => m.status === 'waiting').length;
 
-    // --- Функции управления очередью ---
     const handleMainButtonClick = async () => {
+        setIsButtonLoading(true);
         if (calledMember) {
+            setMembers(prev => prev.map(m => m.id === calledMember.id ? { ...m, status: 'serviced' } : m));
             await supabase.from('queue_members').update({ status: 'serviced' }).eq('id', calledMember.id);
         } else {
             const nextMember = members.find(m => m.status === 'waiting');
             if (nextMember) {
+                setMembers(prev => prev.map(m => m.id === nextMember.id ? { ...m, status: 'called' } : m));
                 await supabase.from('queue_members').update({ status: 'called' }).eq('id', nextMember.id);
-            } else {
-                toast.error('Нет участников в очереди для вызова.');
             }
         }
+        setIsButtonLoading(false);
     };
-
     const handleCallSpecific = async (memberId) => {
-        if (calledMember) {
-            toast.error('Сначала завершите обслуживание текущего участника.');
-            return;
-        }
+        if (calledMember) { toast.error('Завершите текущее обслуживание.'); return; }
+        setIsButtonLoading(true);
+        setMembers(prev => prev.map(m => m.id === memberId ? { ...m, status: 'called' } : m));
         await supabase.from('queue_members').update({ status: 'called' }).eq('id', memberId);
+        setIsButtonLoading(false);
     };
-    
     const handleRemoveMember = async (memberId) => {
-        if (window.confirm('Вы уверены, что хотите удалить этого участника?')) {
+        if (window.confirm('Удалить участника?')) {
             setMembers(currentMembers => currentMembers.filter(m => m.id !== memberId));
-            const { error } = await supabase.from('queue_members').delete().eq('id', memberId);
-            if (error) {
-                toast.error('Ошибка при удалении на сервере.');
-            }
+            await supabase.from('queue_members').delete().eq('id', memberId);
+        }
+    };
+    const handleShare = () => {
+        if (navigator.share) {
+            navigator.share({ title: `Очередь: ${queue.name}`, url: joinUrl });
+        } else {
+            navigator.clipboard.writeText(joinUrl);
+            toast.success('Ссылка скопирована!');
         }
     };
 
-    // --- Эффекты для загрузки данных и подписки ---
     useEffect(() => {
         const fetchInitialData = async () => {
             setLoading(true);
             try {
-                const { data: queueData, error: queueError } = await supabase
-                    .from('queues').select('*').eq('admin_secret_key', secretKey).single();
-                if (queueError) throw new Error("Очередь не найдена.");
-                setQueue(queueData);
-
-                const joinUrl = `${window.location.origin}/join/${queueData.id}`;
-                const qrUrl = await QRCode.toDataURL(joinUrl);
+                const { data: qData, error: qError } = await supabase.from('queues').select('*').eq('admin_secret_key', secretKey).single();
+                if (qError || !qData) throw new Error("Очередь не найдена.");
+                setQueue(qData);
+                const currentJoinUrl = `${window.location.origin}/join/${qData.id}`;
+                setJoinUrl(currentJoinUrl);
+                const qrUrl = await QRCode.toDataURL(currentJoinUrl);
                 setQrCodeUrl(qrUrl);
-
-                const { data: membersData, error: membersError } = await supabase.from('queue_members')
-                    .select('*').eq('queue_id', queueData.id).order('ticket_number', { ascending: true });
-                if (membersError) throw membersError;
-                setMembers(membersData || []);
             } catch (error) {
-                console.error(error);
                 setQueue(null);
-            } finally {
-                setLoading(false);
             }
         };
         fetchInitialData();
     }, [secretKey]);
-
+    
     useEffect(() => {
-        if (!queue) return;
-        const channel = supabase.channel(`admin-updates-for-${queue.id}`)
-            .on('postgres_changes', 
-                { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queue.id}` }, 
-                async () => {
-                    const { data } = await supabase.from('queue_members')
-                       .select('*').eq('queue_id', queue.id).order('ticket_number', { ascending: true });
-                    if (data) setMembers(data);
-                }
-            ).subscribe();
-        return () => { supabase.removeChannel(channel); };
-    }, [queue]);
+        if (!queue) {
+            if (loading) setLoading(false);
+            return;
+        }
+        const fetchMembers = async () => {
+            const { data } = await supabase.from('queue_members').select('*').eq('queue_id', queue.id).order('ticket_number');
+            setMembers(data || []);
+            setLoading(false);
+        };
+        fetchMembers();
+        const channel = supabase.channel(`admin-rt-${queue.id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queue.id}` }, fetchMembers).subscribe();
+        return () => supabase.removeChannel(channel);
+    }, [queue, loading]);
 
-    if (loading) return <div>Загрузка...</div>;
-    if (!queue) return <div>Ошибка: Очередь не найдена или неверная ссылка.</div>;
-
+    if (loading) return <div className="container" style={{textAlign: 'center', paddingTop: '40px'}}>Загрузка...</div>;
+    if (!queue) return <div className="container" style={{textAlign: 'center', paddingTop: '40px'}}>Ошибка.</div>;
+    
     return (
-        <div style={{ fontFamily: 'sans-serif', padding: '20px', display: 'flex', gap: '40px', justifyContent: 'center' }}>
-            <div style={{ flex: '0 1 350px' }}>
-                <div style={{textAlign: 'center'}}>
-                    <h1>{queue.name}</h1>
-                    <h2 style={{fontWeight: 'normal', fontSize: '1.2em', color: '#555'}}>Пригласите участников</h2>
-                </div>
-                
-                <Link to={`/print/${queue.id}`} target="_blank" title="Нажмите, чтобы открыть страницу для печати">
-                    <div style={{ marginTop: '10px', padding: '20px', border: '1px solid #ccc', borderRadius: '8px', background: 'white', cursor: 'pointer' }}>
-                        {qrCodeUrl && <img src={qrCodeUrl} alt="QR Code" style={{width: '100%', display: 'block'}} />}
-                    </div>
-                </Link>
-                <p style={{textAlign: 'center', marginTop: '5px', fontSize: '0.9em'}}>Нажмите на QR-код для печати</p>
-                
-                <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <input 
-                        type="text" 
-                        readOnly 
-                        value={`${window.location.origin}/join/${queue.id}`} 
-                        style={{flex: 1, padding: '8px', border: '1px solid #ccc', borderRadius: '4px', fontSize: '14px'}}
-                    />
-                    <button 
-                        onClick={() => {
-                            navigator.clipboard.writeText(`${window.location.origin}/join/${queue.id}`);
-                            toast.success('Ссылка скопирована!');
-                        }}
-                        title="Скопировать ссылку"
-                        style={{padding: '8px 12px', cursor: 'pointer', border: '1px solid #ccc', background: '#f8f9fa', borderRadius: '4px'}}
-                    >
-                        📋
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: 'var(--background)' }}>
+            <header style={{ padding: '12px 0', backgroundColor: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(20px)', borderBottom: '1px solid var(--border-color)', position: 'sticky', top: 0, zIndex: 10 }}>
+                <div className="container" style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                    <div style={{width: '44px'}}></div>
+                    <h1 style={{ fontSize: '17px', fontWeight: '600', margin: 0 }}>{queue.name}</h1>
+                    <button onClick={() => setIsModalOpen(true)} style={{background: 'none', border: 'none', padding: '8px', cursor: 'pointer', height: '44px', width: '44px'}}>
+                        <QrCode size={24} color="var(--accent-blue)" />
                     </button>
                 </div>
+            </header>
+            
+            <main ref={listRef} className="container" style={{ flex: 1, overflowY: 'auto', padding: '20px 0', paddingBottom: '120px' }}>
+                <Section title={`В очереди (${waitingMembersCount})`}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        {members.map(member => (
+                            <Card id={`member-${member.id}`} key={member.id} style={{ 
+                                padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                transition: 'all 0.3s ease',
+                                borderLeft: member.status === 'called' ? `4px solid var(--accent-green)` : '4px solid transparent',
+                                opacity: member.status === 'serviced' ? 0.4 : 1,
+                            }}>
+                                <div>
+                                    <p style={{fontSize: '18px', fontWeight: '600', textDecoration: member.status === 'serviced' ? 'line-through' : 'none'}}>
+                                        {member.display_code || `#${member.ticket_number}`} - {member.member_name}
+                                    </p>
+                                    <p style={{fontSize: '14px', color: 'var(--text-secondary)'}}>
+                                        {member.status === 'called' ? 'Вызывается...' : (member.status === 'serviced' ? 'Обслужен' : 'Ожидает')}
+                                    </p>
+                                </div>
+                                <div style={{display: 'flex', gap: '8px'}}>
+                                    {member.status === 'waiting' && <Button onClick={() => handleCallSpecific(member.id)} disabled={!!calledMember || isButtonLoading} style={{padding: '8px', backgroundColor: '#6e6e73', width: 'auto'}} title="Приоритетный вызов"><ChevronRight size={20}/></Button>}
+                                    <Button onClick={() => handleRemoveMember(member.id)} disabled={isButtonLoading} style={{padding: '8px', backgroundColor: 'var(--accent-red)', width: 'auto'}} title="Удалить"><UserX size={20}/></Button>
+                                </div>
+                            </Card>
+                        ))}
+                        {members.length === 0 && <p style={{textAlign: 'center', color: 'var(--text-secondary)', padding: '20px'}}>В очереди пока никого нет.</p>}
+                    </div>
+                </Section>
+            </main>
 
-                <hr style={{ margin: '20px 0' }} />
-                <button 
-                    onClick={handleMainButtonClick} 
-                    disabled={!calledMember && waitingMembersCount === 0}
-                    style={{
-                        width: '100%', padding: '15px', fontSize: '18px', color: 'white', border: 'none', 
-                        borderRadius: '5px', cursor: 'pointer', transition: 'all 0.3s ease',
-                        background: calledMember ? '#28a745' : '#007bff',
-                        opacity: (!calledMember && waitingMembersCount === 0) ? 0.5 : 1,
-                    }}>
-                    {calledMember ? `Завершить #${calledMember.ticket_number}` : 'Вызвать следующего'}
-                </button>
-            </div>
+            <footer style={{ padding: '16px 0', backgroundColor: 'var(--card-background)', borderTop: '1px solid var(--border-color)', position: 'sticky', bottom: 0, zIndex: 10 }}>
+                <div className="container">
+                    <Button 
+                        onClick={handleMainButtonClick} 
+                        disabled={(!calledMember && waitingMembersCount === 0) || isButtonLoading} 
+                        style={{backgroundColor: calledMember ? 'var(--accent-green)' : 'var(--accent-blue)'}}
+                    >
+                        {isButtonLoading ? '...' : (calledMember ? 
+                            <><Check size={20} /> Завершить ({calledMember.display_code || calledMember.ticket_number})</> : 
+                            <><PhoneCall size={20}/> Вызвать следующего</>
+                        )}
+                    </Button>
+                </div>
+            </footer>
 
-            <div style={{ flex: '0 1 600px', borderLeft: '1px solid #eee', paddingLeft: '40px' }}>
-                <h2>Участники в очереди ({waitingMembersCount})</h2>
-                <ul style={{ listStyle: 'none', padding: 0, maxHeight: '80vh', overflowY: 'auto' }}>
-                    {members.map(member => (
-                        <li key={member.id} style={{ 
-                            fontSize: '1.2em', padding: '15px', border: '1px solid #eee', marginBottom: '10px', borderRadius: '5px',
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'center', transition: 'all 0.3s ease',
-                            background: member.status === 'called' ? '#d4edda' : (member.status === 'serviced' ? '#f8f9fa' : 'white'),
-                            textDecoration: member.status === 'serviced' ? 'line-through' : 'none',
-                            color: member.status === 'serviced' ? '#6c757d' : 'black'
-                        }}>
-                            <div>
-                                <strong style={{color: '#007bff', fontSize: '1.4em'}}>#{member.ticket_number}</strong> - {member.member_name}
-                            </div>
-                            <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
-                                {member.status === 'waiting' && (
-                                    <button 
-                                        onClick={() => handleCallSpecific(member.id)} 
-                                        disabled={!!calledMember} 
-                                        style={{ background: '#17a2b8', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '3px', cursor: 'pointer', opacity: calledMember ? 0.5 : 1}}
-                                        title="Приоритетный вызов"
-                                    >
-                                        Вызвать
-                                    </button>
-                                )}
-                                <button 
-                                    onClick={() => handleRemoveMember(member.id)} 
-                                    style={{background: '#dc3545', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '3px', cursor: 'pointer'}}
-                                    title="Удалить участника"
-                                >
-                                    ✕
-                                </button>
-                            </div>
-                        </li>
-                    ))}
-                </ul>
-                {members.length === 0 && <p>Пока никто не встал в очередь.</p>}
-            </div>
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Покажите QR-код или отправьте ссылку">
+                <div style={{textAlign: 'center'}}>
+                    {qrCodeUrl && <img src={qrCodeUrl} alt="QR Code" style={{width: '100%', maxWidth: '300px', borderRadius: '8px', display: 'block', margin: '0 auto'}}/>}
+                    <p style={{margin: '16px 0', wordBreak: 'break-all'}}>{joinUrl}</p>
+                    <Button onClick={handleShare}>Поделиться</Button>
+                </div>
+            </Modal>
         </div>
     );
 }

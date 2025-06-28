@@ -3,13 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
 
-import Button from '../components/Button';
-import Input from '../components/Input';
-import Card from '../components/Card';
-import { ArrowRight } from 'lucide-react';
-
 function HomePage() {
   const [queueName, setQueueName] = useState('');
+  const [queueDescription, setQueueDescription] = useState(''); // Для описания
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -20,10 +16,9 @@ function HomePage() {
     }
     setIsLoading(true);
     const toastId = toast.loading('Создаем очередь...');
-
     try {
       const { data, error } = await supabase
-        .from('queues').insert([{ name: queueName, description: '' }]).select().single();
+        .from('queues').insert([{ name: queueName, description: queueDescription }]).select().single();
       if (error) throw error;
       
       toast.success('Очередь создана!', { id: toastId });
@@ -42,31 +37,44 @@ function HomePage() {
   };
 
   return (
-    <div className="container">
-      <div style={{ textAlign: 'center', marginBottom: '40px', paddingTop: '60px' }}>
+    // --- ВОТ ОН, ПРАВИЛЬНЫЙ КЛАСС КОНТЕЙНЕРА ---
+    <div className="container" style={{ paddingTop: '60px' }}>
+      <div style={{ textAlign: 'center', marginBottom: '40px' }}>
         <h1 style={{ fontSize: '48px', fontWeight: '700' }}>Q-App</h1>
         <p style={{ fontSize: '20px', color: 'var(--text-secondary)', marginTop: '10px', maxWidth: '400px', margin: '10px auto 0' }}>
           Создайте электронную очередь для любого события за 10 секунд.
         </p>
       </div>
 
-      <Card>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <Input 
-            placeholder="Название вашей очереди"
+      <div style={{ backgroundColor: 'var(--card-background)', padding: '20px', borderRadius: '12px', border: '1px solid var(--border-color)', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <input 
+            placeholder="Название вашей очереди (обязательно)"
             value={queueName}
             onChange={(e) => setQueueName(e.target.value)}
             onKeyPress={handleKeyPress}
+            style={{ width: '100%', padding: '12px', fontSize: '16px', border: '1px solid var(--border-color)', borderRadius: '8px', boxSizing: 'border-box' }}
           />
-          <Button 
+          <textarea
+            placeholder="Описание или условия (необязательно)"
+            value={queueDescription}
+            onChange={(e) => setQueueDescription(e.target.value)}
+            rows="3"
+            style={{ width: '100%', padding: '12px', fontSize: '16px', border: '1px solid var(--border-color)', borderRadius: '8px', boxSizing: 'border-box', fontFamily: 'inherit' }}
+          />
+          <button 
             onClick={handleCreateQueue}
             disabled={isLoading || !queueName.trim()}
-            style={{ width: 'auto', padding: '0 20px' }}
+            style={{ 
+              padding: '12px', fontSize: '16px', fontWeight: '600',
+              backgroundColor: 'var(--accent-blue)', color: 'white', 
+              border: 'none', borderRadius: '8px', cursor: 'pointer' 
+            }}
           >
-            {isLoading ? '...' : <ArrowRight size={24} />}
-          </Button>
+            {isLoading ? 'Создание...' : 'Создать очередь'}
+          </button>
         </div>
-      </Card>
+      </div>
       
       <p style={{ textAlign: 'center', color: 'var(--text-secondary)', marginTop: '20px' }}>
         Бесплатно. Без регистрации. Просто.

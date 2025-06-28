@@ -1,114 +1,74 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 
 function WaitPage() {
-    const { queueId, memberName } = useParams();
+    const { queueId, memberId } = useParams();
     const [myInfo, setMyInfo] = useState(null);
     const [queueName, setQueueName] = useState('');
     const [peopleAhead, setPeopleAhead] = useState(0);
-    const [loading, setLoading] = useState(true); // <-- ВОТ ЭТА СТРОКА, КОТОРУЮ Я СЛУЧАЙНО УДАЛИЛ
+    const [status, setStatus] = useState('loading');
     
-    // useRef для звука и для предотвращения двойного срабатывания
+    const notificationTriggered = useRef(false);
     const audioPlayer = useRef(null);
-    const hasBeenCalled = useRef(false);
+
+    const fetchAllMyData = useCallback(async () => {
+        const { data: memberData, error: memberError } = await supabase.from('queue_members').select('*').eq('id', memberId).single();
+        if (memberError || !memberData) { setStatus('error'); return; }
+        setMyInfo(memberData);
+        const { data: queueData } = await supabase.from('queues').select('name').eq('id', queueId).single();
+        if (queueData) setQueueName(queueData.name);
+        const { count } = await supabase.from('queue_members').select('*', { count: 'exact', head: true }).eq('queue_id', queueId).eq('status', 'waiting').lt('ticket_number', memberData.ticket_number);
+        setPeopleAhead(count || 0);
+    }, [queueId, memberId]);
 
     useEffect(() => {
-        const fetchDataAndSubscribe = async () => {
-            // --- Внутренняя функция для получения всех данных ---
-            const fetchAllData = async () => {
-                // Получаем информацию о себе
-                const { data: memberData, error: memberError } = await supabase
-                    .from('queue_members').select('*').eq('queue_id', queueId).eq('member_name', memberName)
-                    .order('created_at', { ascending: false }).limit(1).single();
+        fetchAllMyData().then(() => setStatus('ok'));
+        const channel = supabase.channel(`wait-page-rt-${memberId}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queueId}` }, fetchAllMyData)
+            .subscribe();
+        return () => { supabase.removeChannel(channel); };
+    }, [fetchAllMyData, memberId, queueId]);
 
-                if (memberError || !memberData) {
-                    setLoading(false);
-                    return;
-                }
-                
-                setMyInfo(memberData);
+    useEffect(() => {
+        if (myInfo && myInfo.status === 'called' && !notificationTriggered.current) {
+            notificationTriggered.current = true;
+            document.title = "ВАША ОЧЕРЕДЬ!";
+            if (audioPlayer.current) audioPlayer.current.play().catch(e => {});
+        }
+    }, [myInfo]);
 
-                // Если статус изменился на "called" впервые
-                if (memberData.status === 'called' && !hasBeenCalled.current) {
-                    hasBeenCalled.current = true; // Отмечаем, что уже вызывали
-                    document.title = "ВАША ОЧЕРЕДЬ!";
-                    if(audioPlayer.current) {
-                        audioPlayer.current.play().catch(e => {});
-                    }
-                }
-                
-                // Получаем название очереди
-                const { data: queueData } = await supabase
-                    .from('queues').select('name').eq('id', queueId).single();
-                if (queueData) setQueueName(queueData.name);
+    if (status === 'loading') return <div className="container" style={{ textAlign: 'center', paddingTop: '40px' }}>Загрузка...</div>;
+    if (status === 'error' || !myInfo) return <div className="container" style={{ textAlign: 'center', paddingTop: '40px' }}>Не удалось найти вашу запись.</div>;
 
-                // Считаем людей впереди
-                const { count } = await supabase
-                    .from('queue_members').select('*', { count: 'exact', head: true })
-                    .eq('queue_id', queueId).eq('status', 'waiting')
-                    .lt('ticket_number', memberData.ticket_number);
-                setPeopleAhead(count || 0);
-
-                setLoading(false);
-            };
-
-            // --- Выполняем первый раз ---
-            await fetchAllData();
-
-            // --- Подписываемся на ЛЮБЫЕ изменения ---
-            const channel = supabase.channel(`public-wait-page-for-${queueId}`)
-                .on('postgres_changes', 
-                    { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queueId}` },
-                    (payload) => {
-                        // При любом изменении просто запрашиваем все данные заново
-                        fetchAllData();
-                    }
-                ).subscribe();
-
-            // Отписка при уходе со страницы
-            return () => {
-                supabase.removeChannel(channel);
-            };
-        };
-
-        fetchDataAndSubscribe();
-
-    }, [queueId, memberName]); // Зависимости должны быть стабильными
-
-    if (loading) return <div>Загрузка вашего статуса...</div>;
-    if (!myInfo) return <div>Не удалось найти вашу запись в очереди. Возможно, вы были удалены.</div>;
-
-    // Добавляем класс анимации, если статус 'called'
-    const animationClass = myInfo.status === 'called' ? 'called-animation' : '';
+    const animationClass = myInfo?.status === 'called' ? 'called-animation' : '';
 
     return (
-        <div className={animationClass} style={{ maxWidth: '600px', margin: '50px auto', padding: '30px', fontFamily: 'sans-serif', border: '2px solid #007bff', borderRadius: '10px', textAlign: 'center' }}>
-            {/* Скрытый аудио плеер */}
-            <audio ref={audioPlayer} src="/notification.mp3" preload="auto"></audio>
-
-            <h2>Очередь: {queueName}</h2>
-            <hr />
-            <p style={{ fontSize: '1.2em' }}>Здравствуйте, <strong>{myInfo.member_name}</strong>!</p>
-            <h1>Ваш номер: <span style={{ color: '#007bff' }}>#{myInfo.ticket_number}</span></h1>
-            
-            {myInfo.status === 'waiting' && (
-                <>
-                    <p style={{ fontSize: '1.5em' }}>Перед вами: <strong>{peopleAhead}</strong> чел.</p>
-                    <p style={{ marginTop: '20px', color: '#555' }}>Эта страница будет обновляться автоматически.</p>
-                </>
-            )}
-
-            {myInfo.status === 'called' && (
-                <div style={{ marginTop: '20px', padding: '20px', backgroundColor: '#28a745', color: 'white', borderRadius: '8px' }}>
-                    <h2>Вас вызывают!</h2>
-                </div>
-            )}
-             {myInfo.status === 'serviced' && (
-                <div style={{ marginTop: '20px', padding: '20px', backgroundColor: '#6c757d', color: 'white', borderRadius: '8px' }}>
-                    <h2>Ваше обслуживание завершено. Спасибо!</h2>
-                </div>
-            )}
+        <div className={`container ${animationClass}`}>
+            <div style={{ textAlign: 'center', border: `2px solid ${myInfo?.status === 'called' ? 'var(--accent-green)' : 'var(--accent-blue)'}`, borderRadius: '16px', padding: '30px', marginTop: '40px' }}>
+                <audio ref={audioPlayer} src="/notification.mp3" preload="auto" />
+                <h2>Очередь: {queueName}</h2>
+                <hr style={{margin: '15px 0', borderColor: 'var(--border-color)'}}/>
+                <p style={{ fontSize: '1.2em', color: 'var(--text-secondary)' }}>Здравствуйте, <strong>{myInfo?.member_name}</strong>!</p>
+                <h1>Ваш код: <span style={{ color: 'var(--accent-blue)', fontSize: '1.5em' }}>{myInfo?.display_code}</span></h1>
+                
+                {myInfo?.status === 'waiting' && (
+                    <>
+                        <p style={{ fontSize: '1.5em' }}>Перед вами: <strong>{peopleAhead}</strong> чел.</p>
+                        <p style={{ marginTop: '20px', color: 'var(--text-secondary)' }}>Эта страница будет обновляться автоматически.</p>
+                    </>
+                )}
+                {myInfo?.status === 'called' && (
+                    <div style={{ marginTop: '20px', padding: '20px', backgroundColor: 'var(--accent-green)', color: 'white', borderRadius: '12px' }}>
+                        <h2 style={{color: 'white', fontWeight: 'bold'}}>Вас вызывают!</h2>
+                    </div>
+                )}
+                {myInfo?.status === 'serviced' && (
+                    <div style={{ marginTop: '20px', padding: '20px', backgroundColor: 'var(--text-secondary)', color: 'white', borderRadius: '12px' }}>
+                        <h2 style={{color: 'white'}}>Ваше обслуживание завершено.</h2>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

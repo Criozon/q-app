@@ -1,6 +1,62 @@
+/* ==========================================================================
+   1. CSS-переменные (наша дизайн-система)
+   ========================================================================== */
+:root {
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+
+  /* Цвета */
+  --background: #f0f2f5; 
+  --card-background: #ffffff;
+  --text-primary: #1d1d1f;
+  --text-secondary: #6e6e73; /* <-- ВОЗВРАЩЕН */
+  --accent-blue: #007aff;
+  --accent-green: #34c759; /* <-- ВОЗВРАЩЕН */
+  --accent-red: #ff3b30;   /* <-- ВОЗВРАЩЕН */
+  --border-color: #d1d1d6;
+  --highlight-green: #d4edda; /* <-- ВОЗВРАЩЕН */
+}
+
+/* ==========================================================================
+   2. Базовые стили
+   ========================================================================== */
+body {
+  margin: 0;
+  font-family: var(--font-family);
+  background-color: var(--background);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 { margin: 0; font-weight: 600; }
+
+/* ==========================================================================
+   3. Глобальный класс-контейнер
+   ========================================================================== */
+.container {
+  width: 100%;
+  max-width: 980px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 20px;
+  padding-right: 20px;
+  box-sizing: border-box;
+}
+
+/* Адаптация для мобильных */
+@media (max-width: 640px) {
+    .container {
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+}
+
+/* ==========================================================================
+   4. Анимация 
+   ========================================================================== */
 @keyframes blink-animation {
   0% { background-color: transparent; }
-  50% { background-color: lightgreen; }
+  50% { background-color: var(--highlight-green); }
   100% { background-color: transparent; }
 }
 

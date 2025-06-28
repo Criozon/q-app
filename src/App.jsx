@@ -20,7 +20,7 @@ function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/admin/:secretKey" element={<AdminPage />} />
           <Route path="/join/:queueId" element={<JoinPage />} />
-          <Route path="/wait/:queueId/:memberName" element={<WaitPage />} />
+          <Route path="/wait/:queueId/:memberId" element={<WaitPage />} />
           <Route path="/print/:queueId" element={<PrintPage />} />
         </Routes>
       </Router>
