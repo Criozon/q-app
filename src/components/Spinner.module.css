@@ -1,0 +1,14 @@
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid var(--border-color); /* Светло-серый ободок */
+  border-top-color: var(--accent-blue); /* Синяя часть, которая будет вращаться */
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -26,11 +26,9 @@
 }
 
 .headerCenter {
-  /* Убрали flex-direction, т.к. теперь элементы в строку */
   display: flex;
   align-items: center;
   gap: 12px;
-  /* Убираем позиционирование по центру, т.к. теперь у нас 3-х колоночная сетка */
 }
 
 .headerTitle {
@@ -49,7 +47,6 @@
   gap: 6px;
 }
 
-/* --- Индикатор статуса --- */
 .statusIndicator {
   width: 8px;
   height: 8px;
@@ -62,17 +59,15 @@
   background-color: #ff9500; /* Orange */
 }
 
-
-/* --- Меню и кнопки в шапке --- */
 .adminMenuContainer {
-  width: 44px; /* Резервируем место слева */
+  width: 44px;
   position: relative;
   display: flex;
   justify-content: flex-start;
 }
 
 .headerActions {
-    width: 88px; /* Резервируем место справа для 2х кнопок */
+    width: 88px;
     display: flex;
     justify-content: flex-end;
     gap: 0;
@@ -132,7 +127,6 @@
 .dropdownMenuItemDelete:hover {
   background-color: #fcebeb;
 }
-
 
 /* --- Основной контент --- */
 .mainContent {
@@ -201,11 +195,36 @@
   background-color: var(--accent-red) !important; 
 }
 
-.emptyQueueText {
-  text-align: center;
-  color: var(--text-secondary);
-  padding: 20px;
+/* --- 3. СТИЛИ ДЛЯ ПУСТОГО СОСТОЯНИЯ --- */
+.emptyState {
+    text-align: center;
+    padding: 60px 20px;
+    background-color: var(--card-background);
+    border-radius: 16px;
+    margin-top: 20px;
 }
+
+.emptyStateIcon {
+    color: var(--border-color);
+}
+
+.emptyStateTitle {
+    font-size: 22px;
+    margin: 16px 0 8px 0;
+}
+
+.emptyStateText {
+    color: var(--text-secondary);
+    max-width: 300px;
+    margin: 0 auto 24px auto;
+}
+
+.emptyStateButton {
+    width: auto !important;
+    padding-left: 24px !important;
+    padding-right: 24px !important;
+}
+/* --- КОНЕЦ НОВЫХ СТИЛЕЙ --- */
 
 /* --- Подвал --- */
 .footer {

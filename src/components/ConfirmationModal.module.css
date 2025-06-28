@@ -1,0 +1,31 @@
+.content {
+  margin-bottom: 24px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.buttonContainer {
+  display: flex;
+  gap: 12px;
+}
+
+/* Переопределяем стили для кнопок, используя наши классы */
+.cancelButton {
+  background-color: #e5e5e5 !important;
+  color: var(--text-primary) !important;
+  font-weight: 500 !important;
+}
+
+.cancelButton:hover:not(:disabled) {
+  background-color: #d1d1d6 !important;
+}
+
+.confirmButton {
+  background-color: var(--accent-red) !important;
+}
+
+.confirmButton:hover:not(:disabled) {
+  background-color: #d93228 !important;
+}

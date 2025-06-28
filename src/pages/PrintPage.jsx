@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import QRCode from 'qrcode';
+import Spinner from '../components/Spinner';
 
 function PrintPage() {
     const { queueId } = useParams();
@@ -36,8 +37,14 @@ function PrintPage() {
             button { display: none; }
         }
     `;
-
-    if (loading) return <p style={{textAlign: 'center', paddingTop: '40px'}}>Генерация QR-кода...</p>;
+    
+    // --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
+    if (loading) return (
+        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', gap: '16px', fontFamily: 'sans-serif' }}>
+            <Spinner />
+            <p>Генерация QR-кода...</p>
+        </div>
+    );
 
     return (
         <>

@@ -7,6 +7,7 @@ import { Trash2 } from 'lucide-react';
 import styles from './HomePage.module.css';
 import Section from '../components/Section';
 import Card from '../components/Card';
+import ConfirmationModal from '../components/ConfirmationModal'; // <-- 1. ИМПОРТ
 import log from '../utils/logger';
 
 function HomePage() {
@@ -17,6 +18,14 @@ function HomePage() {
   const navigate = useNavigate();
 
   const sessionCheckRef = useRef(false);
+  
+  // 2. СОСТОЯНИЕ ДЛЯ МОДАЛЬНОГО ОКНА
+  const [confirmation, setConfirmation] = useState({
+      isOpen: false,
+      title: '',
+      message: null,
+      onConfirm: () => {},
+  });
 
   useEffect(() => {
     try {
@@ -139,46 +148,40 @@ function HomePage() {
       setIsLoading(false);
     }
   };
-
-  const handleDeleteQueue = (queueToDeleteId, queueName) => {
-    const originalQueues = [...myQueues];
-    toast((t) => (
-      <div className={styles.toastContainer}>
-        <span>Вы уверены, что хотите удалить очередь <strong>"{queueName}"</strong>? Это действие необратимо.</span>
-        <div className={styles.toastButtons}>
-          <button 
-            className={`${styles.toastButton} ${styles.toastButtonConfirm}`}
-            onClick={() => {
-              const updatedQueues = myQueues.filter(q => q.id !== queueToDeleteId);
+  
+  // 3. ОБНОВЛЕННАЯ ФУНКЦИЯ УДАЛЕНИЯ ОЧЕРЕДИ
+  const handleDeleteQueue = (queueToDelete) => {
+      setConfirmation({
+          isOpen: true,
+          title: 'Удалить очередь?',
+          message: <p>Вы уверены, что хотите удалить очередь <strong>"{queueToDelete.name}"</strong>? Это действие необратимо, и все участники будут удалены.</p>,
+          confirmText: 'Да, удалить',
+          onConfirm: () => {
+              const originalQueues = [...myQueues];
+              const updatedQueues = myQueues.filter(q => q.id !== queueToDelete.id);
               setMyQueues(updatedQueues);
               localStorage.setItem('my-queues', JSON.stringify(updatedQueues));
-              toast.dismiss(t.id);
+              
+              const toastId = toast.loading(`Удаляем очередь "${queueToDelete.name}"...`);
+
               const performDelete = async () => {
                   const { error } = await supabase.rpc('delete_queue_and_members', {
-                    queue_id_to_delete: queueToDeleteId
+                      queue_id_to_delete: queueToDelete.id
                   });
+                  
+                  toast.dismiss(toastId);
+
                   if (error) {
-                    toast.error(`Не удалось удалить очередь "${queueName}".`);
-                    setMyQueues(originalQueues);
-                    localStorage.setItem('my-queues', JSON.stringify(originalQueues));
+                      toast.error(`Не удалось удалить очередь "${queueToDelete.name}".`);
+                      setMyQueues(originalQueues);
+                      localStorage.setItem('my-queues', JSON.stringify(originalQueues));
                   } else {
-                    toast.success(`Очередь "${queueName}" успешно удалена.`);
+                      toast.success(`Очередь "${queueToDelete.name}" успешно удалена.`);
                   }
               };
               performDelete();
-          }}>
-            Удалить
-          </button>
-          <button 
-            className={`${styles.toastButton} ${styles.toastButtonCancel}`}
-            onClick={() => toast.dismiss(t.id)}>
-            Отмена
-          </button>
-        </div>
-      </div>
-    ), {
-      duration: 6000,
-    });
+          }
+      });
   };
 
   const handleKeyPress = (event) => {
@@ -235,8 +238,8 @@ function HomePage() {
                 </Link>
                 <button 
                     className={styles.deleteButton} 
-                    onClick={() => handleDeleteQueue(queue.id, queue.name)}
-                    title={`Удалить очередь "${queue.name}"`} // <-- ДОБАВЛЕНА ПОДСКАЗКА
+                    onClick={() => handleDeleteQueue(queue)} // <-- Передаем весь объект queue
+                    title={`Удалить очередь "${queue.name}"`}
                 >
                     <Trash2 size={20} />
                 </button>
@@ -245,6 +248,17 @@ function HomePage() {
           </div>
         </Section>
       )}
+
+      {/* 4. ДОБАВЛЯЕМ КОМПОНЕНТ В РЕНДЕР */}
+      <ConfirmationModal 
+          isOpen={confirmation.isOpen}
+          onClose={() => setConfirmation({ ...confirmation, isOpen: false })}
+          onConfirm={confirmation.onConfirm}
+          title={confirmation.title}
+          confirmText={confirmation.confirmText}
+      >
+          {confirmation.message}
+      </ConfirmationModal>
     </div>
   );
 }

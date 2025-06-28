@@ -7,6 +7,7 @@ import { PauseCircle } from 'lucide-react';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import Card from '../components/Card';
+import Spinner from '../components/Spinner';
 import styles from './JoinPage.module.css';
 import log from '../utils/logger';
 
@@ -89,8 +90,6 @@ function JoinPage() {
         }
         setIsLoading(true);
         try {
-            // --- ВОЗВРАЩАЕМСЯ К ПРОСТОМУ И НАДЕЖНОМУ .insert() ---
-            // Именно эта команда будет запускать наш триггер в базе данных
             const chars = 'ACEHKMOPTX'; 
             const randomChar = chars.charAt(Math.floor(Math.random() * chars.length));
             const randomNumber = Math.floor(10 + Math.random() * 90);
@@ -102,12 +101,10 @@ function JoinPage() {
                 .select('id')
                 .single();
 
-            // Если триггер заблокировал запись, supabase вернет ошибку.
             if (error) {
                 throw error; 
             }
 
-            // Этот код выполнится ТОЛЬКО если триггер разрешил запись
             const session = { memberId: data.id, queueId: queueId };
             localStorage.setItem('my-queue-session', JSON.stringify(session));
             
@@ -117,7 +114,6 @@ function JoinPage() {
         } catch (err) {
             log('JoinPage', 'ОШИБКА в handleJoinQueue:', err.message, 'error');
             
-            // Наш триггер вернет именно это сообщение
             if (err.message.includes('Queue is currently paused')) {
                 toast.error("Запись в очередь приостановлена администратором.");
             } else {
@@ -147,7 +143,12 @@ function JoinPage() {
         toast.success('Теперь вы можете войти как новый участник.', { id: toastId });
     };
     
-    if (isLoading) return <div className="container" style={{textAlign: 'center', paddingTop: '40px'}}>Загрузка...</div>;
+    // --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
+    if (isLoading) return (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+            <Spinner />
+        </div>
+    );
     
     if (error) return <div className={`container ${styles.errorText}`}>{error}</div>;
     

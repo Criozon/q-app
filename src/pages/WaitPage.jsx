@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom'; // <-- Импортируем useNavigate
+import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import toast from 'react-hot-toast'; // <-- Импортируем toast
-import Button from '../components/Button'; // <-- Импортируем наш компонент кнопки
+import toast from 'react-hot-toast';
+
+import Button from '../components/Button';
+import Spinner from '../components/Spinner';
+import ConfirmationModal from '../components/ConfirmationModal'; // <-- 1. ИМПОРТ
 import styles from './WaitPage.module.css';
 import log from '../utils/logger';
 
@@ -10,45 +13,57 @@ const PAGE_SOURCE = 'WaitPage';
 
 function WaitPage() {
     const { queueId, memberId } = useParams();
-    const navigate = useNavigate(); // <-- Инициализируем хук
+    const navigate = useNavigate();
     const [myInfo, setMyInfo] = useState(null);
     const [queueName, setQueueName] = useState('');
     const [peopleAhead, setPeopleAhead] = useState(0);
     const [status, setStatus] = useState('loading');
     const [errorMessage, setErrorMessage] = useState('');
-    const [isLeaving, setIsLeaving] = useState(false); // <-- Состояние для блокировки кнопки
+    const [isLeaving, setIsLeaving] = useState(false);
 
     const notificationTriggered = useRef(false);
     const audioPlayer = useRef(null);
     
-    // --- НОВАЯ ФУНКЦИЯ ---
-    const handleLeaveQueue = async () => {
-        if (window.confirm('Вы уверены, что хотите выйти из очереди?')) {
-            setIsLeaving(true);
-            const toastId = toast.loading('Выходим из очереди...');
+    // 2. СОСТОЯНИЕ ДЛЯ МОДАЛЬНОГО ОКНА
+    const [confirmation, setConfirmation] = useState({
+        isOpen: false,
+        title: '',
+        message: null,
+        onConfirm: () => {},
+    });
 
-            try {
-                const { error } = await supabase
-                    .from('queue_members')
-                    .delete()
-                    .eq('id', memberId);
+    // 3. ОБНОВЛЕННАЯ ФУНКЦИЯ ВЫХОДА
+    const handleLeaveQueue = () => {
+        setConfirmation({
+            isOpen: true,
+            title: 'Выход из очереди',
+            message: <p>Вы уверены, что хотите покинуть очередь <strong>"{queueName}"</strong>?</p>,
+            confirmText: 'Да, выйти',
+            onConfirm: async () => {
+                setIsLeaving(true);
+                const toastId = toast.loading('Выходим из очереди...');
 
-                if (error) throw error;
+                try {
+                    const { error } = await supabase
+                        .from('queue_members')
+                        .delete()
+                        .eq('id', memberId);
 
-                localStorage.removeItem('my-queue-session');
-                toast.success('Вы успешно покинули очередь.', { id: toastId });
-                navigate('/');
+                    if (error) throw error;
 
-            } catch (error) {
-                toast.error('Не удалось выйти из очереди.', { id: toastId });
-                setIsLeaving(false);
+                    localStorage.removeItem('my-queue-session');
+                    toast.success('Вы успешно покинули очередь.', { id: toastId });
+                    navigate('/');
+
+                } catch (error) {
+                    toast.error('Не удалось выйти из очереди.', { id: toastId });
+                    setIsLeaving(false);
+                }
             }
-        }
+        });
     };
-    // --- КОНЕЦ НОВОЙ ФУНКЦИИ ---
-
+    
     const checkMyStatus = async () => {
-        // ... (эта функция без изменений)
         log(PAGE_SOURCE, 'Проверка статуса...');
         try {
             const { data, error } = await supabase
@@ -78,7 +93,6 @@ function WaitPage() {
     };
 
     useEffect(() => {
-        // ... (этот useEffect без изменений)
         const handleRealtimeEvent = (payload) => {
             log(PAGE_SOURCE, `Получено Realtime ${payload.eventType} событие`);
             
@@ -114,7 +128,6 @@ function WaitPage() {
     }, [memberId, queueId]);
 
     useEffect(() => {
-        // ... (этот useEffect без изменений)
         if (myInfo) {
             if (myInfo.status === 'called' && !notificationTriggered.current) {
                 log(PAGE_SOURCE, 'Статус изменился на "called", триггерим уведомление.');
@@ -128,8 +141,12 @@ function WaitPage() {
             }
         }
     }, [myInfo]);
-
-    if (status === 'loading') return <div className="container" style={{ textAlign: 'center', paddingTop: '40px' }}>Загрузка...</div>;
+    
+    if (status === 'loading') return (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+            <Spinner />
+        </div>
+    );
     
     if (status === 'error') return (
         <div className={`container ${styles.errorContainer}`}>
@@ -150,8 +167,6 @@ function WaitPage() {
                 {myInfo?.status === 'called' && (<div className={`${styles.statusBox} ${styles.statusCalled}`}><h2>Вас вызывают!</h2></div>)}
                 {myInfo?.status === 'serviced' && (<div className={`${styles.statusBox} ${styles.statusServiced}`}><h2>Ваше обслуживание завершено.</h2></div>)}
                 
-                {/* --- НОВАЯ КНОПКА --- */}
-                {/* Показываем кнопку только если пользователь ещё ждёт или его вызвали */}
                 {(myInfo?.status === 'waiting' || myInfo?.status === 'called') && (
                     <Button 
                         onClick={handleLeaveQueue}
@@ -161,8 +176,18 @@ function WaitPage() {
                         {isLeaving ? 'Выходим...' : 'Выйти из очереди'}
                     </Button>
                 )}
-                {/* --- КОНЕЦ НОВОЙ КНОПКИ --- */}
             </div>
+            
+            {/* 4. ДОБАВЛЯЕМ КОМПОНЕНТ В РЕНДЕР */}
+            <ConfirmationModal 
+                isOpen={confirmation.isOpen}
+                onClose={() => setConfirmation({ ...confirmation, isOpen: false })}
+                onConfirm={confirmation.onConfirm}
+                title={confirmation.title}
+                confirmText={confirmation.confirmText}
+            >
+                {confirmation.message}
+            </ConfirmationModal>
         </div>
     );
 }

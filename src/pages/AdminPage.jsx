@@ -3,11 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
 import QRCode from 'qrcode';
-import { QrCode, Check, PhoneCall, UserX, ChevronRight, MoreVertical, Undo2, PauseCircle, PlayCircle } from 'lucide-react';
+// --- 1. ИМПОРТИРУЕМ НОВУЮ ИКОНКУ ---
+import { QrCode, Check, PhoneCall, UserX, ChevronRight, MoreVertical, Undo2, PauseCircle, PlayCircle, Users } from 'lucide-react';
 
 import Card from '../components/Card';
 import Modal from '../components/Modal';
 import Button from '../components/Button';
+import ConfirmationModal from '../components/ConfirmationModal';
+import Spinner from '../components/Spinner';
 import styles from './AdminPage.module.css';
 import log from '../utils/logger';
 
@@ -25,6 +28,13 @@ function AdminPage() {
     const [joinUrl, setJoinUrl] = useState('');
     const [isButtonLoading, setIsButtonLoading] = useState(false);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    
+    const [confirmation, setConfirmation] = useState({
+        isOpen: false,
+        title: '',
+        message: null,
+        onConfirm: () => {},
+    });
 
     const listRef = useRef(null);
     const menuRef = useRef(null);
@@ -52,7 +62,8 @@ function AdminPage() {
                 setJoinUrl(currentJoinUrl);
                 const qrUrl = await QRCode.toDataURL(currentJoinUrl);
                 setQrCodeUrl(qrUrl);
-                if (mData.length === 0) setIsModalOpen(true);
+                // Убираем автоматическое открытие модалки, т.к. теперь есть "пустое состояние"
+                // if (mData.length === 0) setIsModalOpen(true);
             }
         } catch (err) {
             log(PAGE_SOURCE, 'Ошибка при загрузке:', err.message);
@@ -177,16 +188,23 @@ function AdminPage() {
         }
     };
 
-
     const handleCallSpecific = async (memberId) => {
         if (calledMember) { toast.error('Завершите текущее обслуживание.'); return; }
         await supabase.from('queue_members').update({ status: 'called' }).eq('id', memberId);
     };
     
-    const handleRemoveMember = async (memberId) => {
-        if (window.confirm('Удалить участника?')) {
-            await supabase.from('queue_members').delete().eq('id', memberId);
-        }
+    const handleRemoveMember = (member) => {
+        setConfirmation({
+            isOpen: true,
+            title: 'Удалить участника?',
+            message: (
+                <p>Вы уверены, что хотите удалить <strong>{member.member_name} ({member.display_code})</strong> из очереди?</p>
+            ),
+            onConfirm: async () => {
+                await supabase.from('queue_members').delete().eq('id', member.id);
+                toast.success(`Участник ${member.member_name} удален.`);
+            },
+        });
     };
 
     const handleDeleteCurrentQueue = () => {
@@ -230,9 +248,16 @@ function AdminPage() {
         ), { duration: 8000, position: 'top-center' });
     };
     
-    const handleShare = () => { /* ... */ };
-
-    if (loading) return <div className="container" style={{ textAlign: 'center', paddingTop: '40px' }}>Загрузка...</div>;
+    const handleShare = () => {
+        setIsModalOpen(true);
+    };
+    
+    if (loading) return (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+            <Spinner />
+        </div>
+    );
+    
     if (error) return <div className="container" style={{ textAlign: 'center', paddingTop: '40px' }}>{error}</div>;
 
     return (
@@ -283,13 +308,29 @@ function AdminPage() {
                                     </div>
                                     <div className={styles.memberActions}>
                                         {member.status === 'waiting' && <Button onClick={() => handleCallSpecific(member.id)} disabled={!!calledMember || isButtonLoading} className={`${styles.actionButton} ${styles.priorityCallButton}`} title="Приоритетный вызов"><ChevronRight size={20} /></Button>}
-                                        <Button onClick={() => handleRemoveMember(member.id)} disabled={isButtonLoading} className={`${styles.actionButton} ${styles.removeButton}`} title="Удалить участника"><UserX size={20} /></Button>
+                                        <Button onClick={() => handleRemoveMember(member)} disabled={isButtonLoading} className={`${styles.actionButton} ${styles.removeButton}`} title="Удалить участника"><UserX size={20} /></Button>
                                     </div>
                                 </Card>
                             </div>
                         )
                     })}
-                    {members.length === 0 && <p className={styles.emptyQueueText}>В очереди пока никого нет.</p>}
+                    {/* --- 2. НОВЫЙ БЛОК ПУСТОГО СОСТОЯНИЯ --- */}
+                    {members.length === 0 && (
+                        <div className={styles.emptyState}>
+                            <Users size={48} className={styles.emptyStateIcon} />
+                            <h3 className={styles.emptyStateTitle}>В очереди пока никого нет</h3>
+                            <p className={styles.emptyStateText}>
+                                Поделитесь QR-кодом или ссылкой, чтобы люди могли присоединиться.
+                            </p>
+                            <Button 
+                                onClick={handleShare} 
+                                className={styles.emptyStateButton}
+                            >
+                                <QrCode size={18} />
+                                Показать QR-код
+                            </Button>
+                        </div>
+                    )}
                 </div>
             </main>
             <footer className={styles.footer}>
@@ -317,6 +358,16 @@ function AdminPage() {
                     <Button>Поделиться</Button>
                 </div>
             </Modal>
+            
+            <ConfirmationModal 
+                isOpen={confirmation.isOpen}
+                onClose={() => setConfirmation({ ...confirmation, isOpen: false })}
+                onConfirm={confirmation.onConfirm}
+                title={confirmation.title}
+                confirmText="Удалить"
+            >
+                {confirmation.message}
+            </ConfirmationModal>
         </div>
     );
 }
