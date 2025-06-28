@@ -7,7 +7,7 @@ import { Trash2 } from 'lucide-react';
 import styles from './HomePage.module.css';
 import Section from '../components/Section';
 import Card from '../components/Card';
-import ConfirmationModal from '../components/ConfirmationModal'; // <-- 1. ИМПОРТ
+import ConfirmationModal from '../components/ConfirmationModal';
 import log from '../utils/logger';
 
 function HomePage() {
@@ -19,7 +19,6 @@ function HomePage() {
 
   const sessionCheckRef = useRef(false);
   
-  // 2. СОСТОЯНИЕ ДЛЯ МОДАЛЬНОГО ОКНА
   const [confirmation, setConfirmation] = useState({
       isOpen: false,
       title: '',
@@ -141,7 +140,10 @@ function HomePage() {
       setMyQueues(updatedQueues);
       localStorage.setItem('my-queues', JSON.stringify(updatedQueues));
       
-      navigate(`/admin/${data.admin_secret_key}`);
+      // --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
+      // Передаем флаг fromCreation в state при навигации
+      navigate(`/admin/${data.admin_secret_key}`, { state: { fromCreation: true } });
+
     } catch (error) {
       toast.error('Не удалось создать очередь.', { id: toastId });
     } finally {
@@ -149,7 +151,6 @@ function HomePage() {
     }
   };
   
-  // 3. ОБНОВЛЕННАЯ ФУНКЦИЯ УДАЛЕНИЯ ОЧЕРЕДИ
   const handleDeleteQueue = (queueToDelete) => {
       setConfirmation({
           isOpen: true,
@@ -238,7 +239,7 @@ function HomePage() {
                 </Link>
                 <button 
                     className={styles.deleteButton} 
-                    onClick={() => handleDeleteQueue(queue)} // <-- Передаем весь объект queue
+                    onClick={() => handleDeleteQueue(queue)}
                     title={`Удалить очередь "${queue.name}"`}
                 >
                     <Trash2 size={20} />
@@ -249,7 +250,6 @@ function HomePage() {
         </Section>
       )}
 
-      {/* 4. ДОБАВЛЯЕМ КОМПОНЕНТ В РЕНДЕР */}
       <ConfirmationModal 
           isOpen={confirmation.isOpen}
           onClose={() => setConfirmation({ ...confirmation, isOpen: false })}

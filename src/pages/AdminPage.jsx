@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
 import QRCode from 'qrcode';
-// --- 1. ИМПОРТИРУЕМ НОВУЮ ИКОНКУ ---
-import { QrCode, Check, PhoneCall, UserX, ChevronRight, MoreVertical, Undo2, PauseCircle, PlayCircle, Users } from 'lucide-react';
+import { QrCode, Check, PhoneCall, UserX, ChevronRight, MoreVertical, Undo2, PauseCircle, PlayCircle, Users, Share2 } from 'lucide-react';
 
 import Card from '../components/Card';
 import Modal from '../components/Modal';
@@ -19,6 +18,8 @@ const PAGE_SOURCE = 'AdminPage';
 function AdminPage() {
     const { secretKey } = useParams();
     const navigate = useNavigate();
+    const location = useLocation(); 
+
     const [queue, setQueue] = useState(null);
     const [members, setMembers] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -62,8 +63,10 @@ function AdminPage() {
                 setJoinUrl(currentJoinUrl);
                 const qrUrl = await QRCode.toDataURL(currentJoinUrl);
                 setQrCodeUrl(qrUrl);
-                // Убираем автоматическое открытие модалки, т.к. теперь есть "пустое состояние"
-                // if (mData.length === 0) setIsModalOpen(true);
+                
+                if (location.state?.fromCreation) {
+                    setIsModalOpen(true);
+                }
             }
         } catch (err) {
             log(PAGE_SOURCE, 'Ошибка при загрузке:', err.message);
@@ -72,7 +75,7 @@ function AdminPage() {
         } finally {
             if (showLoader) setLoading(false);
         }
-    }, [secretKey]);
+    }, [secretKey, location.state]);
 
     useEffect(() => {
         if (!queue) {
@@ -248,8 +251,31 @@ function AdminPage() {
         ), { duration: 8000, position: 'top-center' });
     };
     
-    const handleShare = () => {
-        setIsModalOpen(true);
+    // --- НОВАЯ ФУНКЦИЯ ДЛЯ КНОПКИ "ПОДЕЛИТЬСЯ" ---
+    const handleShare = async () => {
+        const shareData = {
+            title: `Присоединяйтесь к очереди: ${queue.name}`,
+            text: `Ссылка для входа в очередь "${queue.name}"`,
+            url: joinUrl,
+        };
+
+        if (navigator.share) {
+            try {
+                await navigator.share(shareData);
+                log(PAGE_SOURCE, 'Успешно поделились через Web Share API');
+            } catch (err) {
+                log(PAGE_SOURCE, 'Ошибка Web Share API:', err);
+            }
+        } else {
+            // Фолбэк: копирование в буфер обмена
+            try {
+                await navigator.clipboard.writeText(joinUrl);
+                toast.success('Ссылка скопирована в буфер обмена!');
+            } catch (err) {
+                toast.error('Не удалось скопировать ссылку.');
+                log(PAGE_SOURCE, 'Ошибка копирования в буфер:', err);
+            }
+        }
     };
     
     if (loading) return (
@@ -314,7 +340,6 @@ function AdminPage() {
                             </div>
                         )
                     })}
-                    {/* --- 2. НОВЫЙ БЛОК ПУСТОГО СОСТОЯНИЯ --- */}
                     {members.length === 0 && (
                         <div className={styles.emptyState}>
                             <Users size={48} className={styles.emptyStateIcon} />
@@ -323,7 +348,7 @@ function AdminPage() {
                                 Поделитесь QR-кодом или ссылкой, чтобы люди могли присоединиться.
                             </p>
                             <Button 
-                                onClick={handleShare} 
+                                onClick={() => setIsModalOpen(true)} 
                                 className={styles.emptyStateButton}
                             >
                                 <QrCode size={18} />
@@ -355,7 +380,11 @@ function AdminPage() {
                 <div className={styles.modalContent}>
                     {qrCodeUrl && <img src={qrCodeUrl} alt="QR Code" className={styles.qrImage} />}
                     <p className={styles.joinLink}>{joinUrl}</p>
-                    <Button>Поделиться</Button>
+                    {/* --- ИЗМЕНЕНИЕ ЗДЕСЬ --- */}
+                    <Button onClick={handleShare}>
+                        <Share2 size={18} />
+                        Поделиться
+                    </Button>
                 </div>
             </Modal>
             
