@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
 import QRCode from 'qrcode';
-import { QrCode, Check, PhoneCall, UserX, ChevronRight, MoreVertical } from 'lucide-react';
+import { QrCode, Check, PhoneCall, UserX, ChevronRight, MoreVertical, Undo2, PauseCircle, PlayCircle } from 'lucide-react';
 
 import Card from '../components/Card';
 import Modal from '../components/Modal';
@@ -68,7 +68,7 @@ function AdminPage() {
             return;
         }
         const handleRealtimeEvent = (payload) => {
-            log(PAGE_SOURCE, `Realtime событие ${payload.eventType} получено`);
+            log(PAGE_SOURCE, `Realtime событие для УЧАСТНИКА ${payload.eventType} получено`);
             if (payload.eventType === 'INSERT') {
                 setMembers(currentMembers => [...currentMembers, payload.new].sort((a,b) => a.ticket_number - b.ticket_number));
             }
@@ -82,13 +82,28 @@ function AdminPage() {
 
         const channel = supabase.channel(`admin-page-${queue.id}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queue.id}` }, handleRealtimeEvent)
-            .subscribe(status => log(PAGE_SOURCE, `Статус подписки: ${status}`));
+            .subscribe(status => log(PAGE_SOURCE, `Статус подписки на УЧАСТНИКОВ: ${status}`));
         
         return () => {
-            log(PAGE_SOURCE, 'Очистка подписки на Realtime');
             supabase.removeChannel(channel);
         };
     }, [queue]);
+    
+    useEffect(() => {
+        if (!queue) return;
+        const handleQueueUpdate = (payload) => {
+             log(PAGE_SOURCE, `Realtime событие для ОЧЕРЕДИ ${payload.eventType} получено`);
+             setQueue(payload.new);
+        };
+        const queueChannel = supabase.channel(`admin-queue-status-${queue.id}`, { config: { broadcast: { self: true } } })
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'queues', filter: `id=eq.${queue.id}` }, handleQueueUpdate)
+            .subscribe(status => log(PAGE_SOURCE, `Статус подписки на ОЧЕРЕДЬ: ${status}`));
+
+        return () => {
+            supabase.removeChannel(queueChannel);
+        };
+    }, [queue]);
+
 
     useEffect(() => {
         const handlePageShow = (event) => {
@@ -128,6 +143,41 @@ function AdminPage() {
         setIsButtonLoading(false);
     };
     
+    const handleReturnToQueue = async () => {
+        if (!calledMember) return;
+        setIsButtonLoading(true);
+        try {
+            const { error } = await supabase
+                .from('queue_members')
+                .update({ status: 'waiting' })
+                .eq('id', calledMember.id);
+            if (error) throw error;
+        } catch (err) {
+            toast.error("Не удалось вернуть участника в очередь.");
+        } finally {
+            setIsButtonLoading(false);
+        }
+    };
+    
+    const handleToggleQueueStatus = async () => {
+        if (!queue) return;
+        const newStatus = queue.status === 'active' ? 'paused' : 'active';
+        const actionText = newStatus === 'paused' ? 'приостановлена' : 'возобновлена';
+
+        const { error } = await supabase
+            .from('queues')
+            .update({ status: newStatus })
+            .eq('id', queue.id);
+        
+        if (error) {
+            toast.error("Не удалось изменить статус очереди.");
+        } else {
+            toast.success(`Запись в очередь ${actionText}.`);
+            setQueue(prevQueue => ({ ...prevQueue, status: newStatus }));
+        }
+    };
+
+
     const handleCallSpecific = async (memberId) => {
         if (calledMember) { toast.error('Завершите текущее обслуживание.'); return; }
         await supabase.from('queue_members').update({ status: 'called' }).eq('id', memberId);
@@ -190,22 +240,34 @@ function AdminPage() {
             <header className={styles.header}>
                 <div className={`container ${styles.headerContent}`}>
                     <div ref={menuRef} className={styles.adminMenuContainer}>
-                        <button onClick={() => setIsMenuOpen(!isMenuOpen)} className={styles.menuButton}>
+                        <button onClick={() => setIsMenuOpen(!isMenuOpen)} className={styles.menuButton} title="Открыть меню">
                             <MoreVertical size={24} color="var(--accent-blue)" />
                         </button>
                         {isMenuOpen && (
                             <div className={styles.dropdownMenu}>
-                                <button onClick={handleDeleteCurrentQueue} className={styles.dropdownMenuItem}>
+                                <button onClick={handleDeleteCurrentQueue} className={`${styles.dropdownMenuItem} ${styles.dropdownMenuItemDelete}`}>
                                     <UserX size={16} /> Удалить очередь
                                 </button>
                             </div>
                         )}
                     </div>
+
                     <div className={styles.headerCenter}>
                         <h1 className={styles.headerTitle}>{queue?.name}</h1>
-                        <p className={styles.queueCount}>В очереди: {waitingMembersCount}</p>
+                        <div className={styles.queueCount}>
+                            <div className={`${styles.statusIndicator} ${queue?.status === 'paused' ? styles.statusIndicatorPaused : ''}`}></div>
+                            <span>{queue?.status === 'active' ? 'Активна' : 'Пауза'} | В очереди: {waitingMembersCount}</span>
+                        </div>
                     </div>
-                    <button onClick={() => setIsModalOpen(true)} className={styles.qrButton}><QrCode size={24} color="var(--accent-blue)" /></button>
+                    
+                    <div className={styles.headerActions}>
+                        <button onClick={handleToggleQueueStatus} className={styles.controlButton} title={queue?.status === 'active' ? 'Приостановить запись' : 'Возобновить запись'}>
+                            {queue?.status === 'active' ? <PauseCircle size={24} color="#ff9500" /> : <PlayCircle size={24} color="var(--accent-green)" />}
+                        </button>
+                        <button onClick={() => setIsModalOpen(true)} className={styles.controlButton} title="Показать QR-код и ссылку">
+                            <QrCode size={24} color="var(--accent-blue)" />
+                        </button>
+                    </div>
                 </div>
             </header>
             <main ref={listRef} className={`container ${styles.mainContent}`}>
@@ -221,7 +283,7 @@ function AdminPage() {
                                     </div>
                                     <div className={styles.memberActions}>
                                         {member.status === 'waiting' && <Button onClick={() => handleCallSpecific(member.id)} disabled={!!calledMember || isButtonLoading} className={`${styles.actionButton} ${styles.priorityCallButton}`} title="Приоритетный вызов"><ChevronRight size={20} /></Button>}
-                                        <Button onClick={() => handleRemoveMember(member.id)} disabled={isButtonLoading} className={`${styles.actionButton} ${styles.removeButton}`} title="Удалить"><UserX size={20} /></Button>
+                                        <Button onClick={() => handleRemoveMember(member.id)} disabled={isButtonLoading} className={`${styles.actionButton} ${styles.removeButton}`} title="Удалить участника"><UserX size={20} /></Button>
                                     </div>
                                 </Card>
                             </div>
@@ -231,17 +293,28 @@ function AdminPage() {
                 </div>
             </main>
             <footer className={styles.footer}>
-                <div className="container">
-                    <Button onClick={handleMainButtonClick} disabled={(!calledMember && waitingMembersCount === 0) || isButtonLoading} style={{ backgroundColor: calledMember ? 'var(--accent-green)' : 'var(--accent-blue)' }}>
-                        {isButtonLoading ? '...' : (calledMember ? <><Check size={20} /> Завершить ({calledMember.display_code || calledMember.ticket_number})</> : <><PhoneCall size={20} /> Вызвать следующего</>)}
-                    </Button>
+                <div className={`container ${styles.footerActions}`}>
+                    {calledMember ? (
+                        <>
+                            <Button onClick={handleReturnToQueue} disabled={isButtonLoading} className={styles.returnButton}>
+                                <Undo2 size={20} /> Вернуть
+                            </Button>
+                            <Button onClick={handleMainButtonClick} disabled={isButtonLoading} className={styles.completeButton}>
+                                <Check size={20} /> Завершить ({calledMember.display_code || calledMember.ticket_number})
+                            </Button>
+                        </>
+                    ) : (
+                        <Button onClick={handleMainButtonClick} disabled={waitingMembersCount === 0 || isButtonLoading} className={styles.callNextButton}>
+                            {isButtonLoading ? '...' : <><PhoneCall size={20} /> Вызвать следующего</>}
+                        </Button>
+                    )}
                 </div>
             </footer>
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Покажите QR-код или отправьте ссылку">
                 <div className={styles.modalContent}>
                     {qrCodeUrl && <img src={qrCodeUrl} alt="QR Code" className={styles.qrImage} />}
                     <p className={styles.joinLink}>{joinUrl}</p>
-                    <Button onClick={handleShare}>Поделиться</Button>
+                    <Button>Поделиться</Button>
                 </div>
             </Modal>
         </div>

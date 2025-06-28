@@ -33,9 +33,9 @@
   color: var(--accent-red);
   text-align: center;
   padding-top: 40px;
+  font-size: 1.1em;
+  font-weight: 500;
 }
-
-/* ... (ваши существующие стили) */
 
 .secondaryButton {
   background-color: #e5e5e5 !important;
@@ -45,4 +45,17 @@
 
 .secondaryButton:hover:not(:disabled) {
   background-color: #d1d1d6 !important;
+}
+
+/* --- НОВЫЕ СТИЛИ ДЛЯ СООБЩЕНИЯ О ПАУЗЕ --- */
+.pausedMessage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 20px;
+    text-align: center;
+    font-size: 1.1em;
+    font-weight: 500;
+    color: var(--text-secondary);
 }

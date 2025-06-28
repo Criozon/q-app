@@ -26,10 +26,11 @@
 }
 
 .headerCenter {
+  /* Убрали flex-direction, т.к. теперь элементы в строку */
   display: flex;
-  flex-direction: column;
   align-items: center;
-  line-height: 1.2;
+  gap: 12px;
+  /* Убираем позиционирование по центру, т.к. теперь у нас 3-х колоночная сетка */
 }
 
 .headerTitle {
@@ -43,27 +44,44 @@
   color: var(--text-secondary);
   margin: 0;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
-.qrButton {
-  background: none;
-  border: none;
-  padding: 8px;
-  cursor: pointer;
-  height: 44px; 
-  width: 44px;
+/* --- Индикатор статуса --- */
+.statusIndicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--accent-green);
+  transition: background-color 0.3s ease;
 }
 
-/* --- Меню администратора (заменяет .placeholder) --- */
+.statusIndicatorPaused {
+  background-color: #ff9500; /* Orange */
+}
+
+
+/* --- Меню и кнопки в шапке --- */
 .adminMenuContainer {
-  width: 44px;
+  width: 44px; /* Резервируем место слева */
   position: relative;
+  display: flex;
+  justify-content: flex-start;
 }
 
-.menuButton {
+.headerActions {
+    width: 88px; /* Резервируем место справа для 2х кнопок */
+    display: flex;
+    justify-content: flex-end;
+    gap: 0;
+}
+
+.menuButton, .controlButton {
   background: none;
   border: none;
-  padding: 8px;
+  padding: 0;
   cursor: pointer;
   height: 44px;
   width: 44px;
@@ -74,7 +92,7 @@
   transition: background-color 0.2s ease;
 }
 
-.menuButton:hover {
+.menuButton:hover, .controlButton:hover {
   background-color: #f0f2f5;
 }
 
@@ -105,13 +123,16 @@
   font-weight: 500;
   cursor: pointer;
   border-radius: 6px;
-  color: var(--accent-red);
   transition: background-color 0.2s ease;
 }
 
-.dropdownMenuItem:hover {
+.dropdownMenuItemDelete {
+  color: var(--accent-red);
+}
+.dropdownMenuItemDelete:hover {
   background-color: #fcebeb;
 }
+
 
 /* --- Основной контент --- */
 .mainContent {
@@ -194,6 +215,29 @@
   position: sticky;
   bottom: 0;
   z-index: 10;
+}
+
+.footerActions {
+  display: flex;
+  gap: 12px;
+}
+
+.callNextButton {
+  background-color: var(--accent-blue);
+  width: 100%;
+}
+
+.completeButton {
+  background-color: var(--accent-green);
+  width: auto;
+  flex-grow: 1;
+}
+
+.returnButton {
+  background-color: #8e8e93 !important;
+  width: auto;
+  flex-grow: 0;
+  flex-shrink: 0;
 }
 
 /* --- Модальное окно --- */

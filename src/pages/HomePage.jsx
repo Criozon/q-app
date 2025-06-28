@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'; // <-- ВОТ ИСПРАВЛЕНИЕ
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import toast from 'react-hot-toast';
@@ -16,11 +16,9 @@ function HomePage() {
   const [myQueues, setMyQueues] = useState([]);
   const navigate = useNavigate();
 
-  // Используем useRef, чтобы предотвратить двойной вызов в StrictMode
   const sessionCheckRef = useRef(false);
 
   useEffect(() => {
-    // Этот useEffect загружает очереди администратора
     try {
       const savedQueuesRaw = localStorage.getItem('my-queues');
       if (savedQueuesRaw) {
@@ -31,7 +29,6 @@ function HomePage() {
       localStorage.removeItem('my-queues');
     }
 
-    // Проверяем активную сессию участника
     const checkActiveSession = async () => {
       try {
         const sessionRaw = localStorage.getItem('my-queue-session');
@@ -239,7 +236,7 @@ function HomePage() {
                 <button 
                     className={styles.deleteButton} 
                     onClick={() => handleDeleteQueue(queue.id, queue.name)}
-                    title={`Удалить очередь "${queue.name}"`}
+                    title={`Удалить очередь "${queue.name}"`} // <-- ДОБАВЛЕНА ПОДСКАЗКА
                 >
                     <Trash2 size={20} />
                 </button>
