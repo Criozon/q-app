@@ -87,9 +87,11 @@ export const getMembersByQueueId = (queueId) => {
  * @returns {Promise<object>} Данные участника.
  */
 export const getMemberById = (memberId) => {
+     // ----- ИЗМЕНЕНИЕ ЗДЕСЬ -----
+     // Мы запрашиваем все поля участника (*), а также имя связанной очереди.
      return supabase
         .from('queue_members')
-        .select('status, queues(name)')
+        .select('*, queues(name)') // Было: 'status, queues(name)'
         .eq('id', memberId)
         .single();
 };
