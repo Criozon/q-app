@@ -1,22 +1,28 @@
 import React from 'react';
 import styles from './Button.module.css';
+import Spinner from './Spinner'; // 1. Импортируем наш спиннер
 
-// 1. Добавляем `className` в список принимаемых пропсов
-function Button({ children, disabled, onClick, style, title, className }) {
+// 2. Добавляем isLoading в пропсы
+function Button({ children, disabled, onClick, style, title, className, isLoading = false }) {
   
-  // 2. Создаем строку с классами: базовый класс + любые внешние классы
-  const combinedClassName = [styles.button, className].filter(Boolean).join(' ');
+  // 3. Объединяем классы, добавляя класс для состояния загрузки
+  const combinedClassName = [
+    styles.button, 
+    isLoading ? styles.loadingState : '',
+    className
+  ].filter(Boolean).join(' ');
 
   return (
     <button
-      // 3. Используем объединенные классы
       className={combinedClassName} 
       style={style}
-      disabled={disabled}
+      // 4. Кнопка неактивна, пока идет загрузка
+      disabled={disabled || isLoading}
       onClick={onClick}
       title={title}
     >
-      {children}
+      {/* 5. Показываем спиннер или контент */}
+      {isLoading ? <Spinner /> : children}
     </button>
   );
 }

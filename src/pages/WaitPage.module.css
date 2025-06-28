@@ -1,5 +1,6 @@
 .pageContainer {
   transition: background-color 0.5s; 
+  padding-bottom: 40px; /* Добавим отступ снизу */
 }
 
 .waitCard {
@@ -77,8 +78,6 @@
   background-color: var(--card-background);
 }
 
-/* ... (все ваши существующие стили) */
-
 .leaveButton {
   margin-top: 30px;
   background-color: #e5e5e5 !important; /* Делаем ее серой */
@@ -91,4 +90,52 @@
 
 .leaveButton:hover:not(:disabled) {
   background-color: #d1d1d6 !important;
+}
+
+/* --- НОВЫЕ СТИЛИ ДЛЯ ПРИЗЫВА --- */
+.notificationPrompt {
+  margin-top: 24px;
+  padding: 16px !important;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background-color: #e3f2fd; /* Светло-голубой фон */
+  border: 1px solid #90caf9;
+}
+
+.promptIcon {
+  flex-shrink: 0;
+  color: var(--accent-blue);
+}
+
+.promptText {
+  flex-grow: 1;
+}
+
+.promptText h4 {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.promptText p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.promptButton {
+  width: auto !important; /* Кнопка по ширине контента */
+  padding: 12px 20px !important;
+  font-size: 15px !important;
+  flex-shrink: 0;
+}
+
+.notificationPromptDenied {
+    background-color: #fcebeb;
+    border-color: #f1a4a4;
+}
+
+.notificationPromptDenied .promptIcon {
+    color: var(--accent-red);
 }

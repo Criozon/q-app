@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
+import { Bell, BellOff } from 'lucide-react';
 import toast from 'react-hot-toast';
-
 import Button from '../components/Button';
 import Spinner from '../components/Spinner';
-import ConfirmationModal from '../components/ConfirmationModal'; // <-- 1. ИМПОРТ
+import ConfirmationModal from '../components/ConfirmationModal';
+import Card from '../components/Card';
 import styles from './WaitPage.module.css';
 import log from '../utils/logger';
+import * as service from '../services/supabaseService';
+import { clearActiveSession } from '../utils/session';
 
 const PAGE_SOURCE = 'WaitPage';
 
@@ -20,19 +22,28 @@ function WaitPage() {
     const [status, setStatus] = useState('loading');
     const [errorMessage, setErrorMessage] = useState('');
     const [isLeaving, setIsLeaving] = useState(false);
-
+    const [notificationPermission, setNotificationPermission] = useState(Notification.permission);
     const notificationTriggered = useRef(false);
     const audioPlayer = useRef(null);
+    const [confirmation, setConfirmation] = useState({ isOpen: false, title: '', message: null, onConfirm: () => {} });
     
-    // 2. СОСТОЯНИЕ ДЛЯ МОДАЛЬНОГО ОКНА
-    const [confirmation, setConfirmation] = useState({
-        isOpen: false,
-        title: '',
-        message: null,
-        onConfirm: () => {},
-    });
+    const requestNotificationPermission = async () => {
+        if (!('Notification' in window)) {
+            toast.error('Ваш браузер не поддерживает уведомления.');
+            return;
+        }
+        const permission = await Notification.requestPermission();
+        setNotificationPermission(permission);
+        if (permission === 'granted') {
+            toast.success('Отлично! Мы сообщим, когда подойдет ваша очередь.');
+            new Notification('Уведомления для Q-App включены!', {
+                body: 'Теперь вы не пропустите свой вызов.', icon: '/vite.svg'
+            });
+        } else {
+            toast.error('Вы заблокировали уведомления. Вы можете включить их в настройках браузера.');
+        }
+    };
 
-    // 3. ОБНОВЛЕННАЯ ФУНКЦИЯ ВЫХОДА
     const handleLeaveQueue = () => {
         setConfirmation({
             isOpen: true,
@@ -42,21 +53,15 @@ function WaitPage() {
             onConfirm: async () => {
                 setIsLeaving(true);
                 const toastId = toast.loading('Выходим из очереди...');
-
                 try {
-                    const { error } = await supabase
-                        .from('queue_members')
-                        .delete()
-                        .eq('id', memberId);
-
+                    const { error } = await service.deleteMember(memberId);
                     if (error) throw error;
-
-                    localStorage.removeItem('my-queue-session');
+                    clearActiveSession();
                     toast.success('Вы успешно покинули очередь.', { id: toastId });
                     navigate('/');
-
                 } catch (error) {
                     toast.error('Не удалось выйти из очереди.', { id: toastId });
+                } finally {
                     setIsLeaving(false);
                 }
             }
@@ -66,25 +71,16 @@ function WaitPage() {
     const checkMyStatus = async () => {
         log(PAGE_SOURCE, 'Проверка статуса...');
         try {
-            const { data, error } = await supabase
-                .from('queue_members')
-                .select(`*, queues(name)`)
-                .eq('id', memberId)
-                .single();
-            
+            const { data, error } = await service.getMemberById(memberId);
             if (error || !data || !data.queues) {
-                localStorage.removeItem('my-queue-session');
+                clearActiveSession();
                 throw new Error('Очередь, в которой вы находились, была удалена.');
             }
-            
             setMyInfo(data);
             setQueueName(data.queues.name);
-            
-            const { count } = await supabase.from('queue_members').select('*', { count: 'exact', head: true }).eq('queue_id', queueId).eq('status', 'waiting').lt('ticket_number', data.ticket_number);
+            const { count } = await service.getWaitingMembersCount(queueId, data.ticket_number);
             setPeopleAhead(count || 0);
-
             if (status !== 'ok') setStatus('ok');
-
         } catch (err) {
             log(PAGE_SOURCE, 'Ошибка при проверке статуса:', err.message);
             setStatus('error');
@@ -95,64 +91,64 @@ function WaitPage() {
     useEffect(() => {
         const handleRealtimeEvent = (payload) => {
             log(PAGE_SOURCE, `Получено Realtime ${payload.eventType} событие`);
-            
             if (payload.eventType === 'DELETE') {
                 log(PAGE_SOURCE, 'Запись участника удалена.');
-                localStorage.removeItem('my-queue-session');
+                clearActiveSession();
                 setStatus('error');
                 setErrorMessage('Эта очередь была удалена администратором.');
-                supabase.removeChannel(supabase.channel(`wait-page-${memberId}`));
+                service.removeSubscription(channel);
             } else {
                 checkMyStatus();
             }
         };
-
-        const channel = supabase.channel(`wait-page-${memberId}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'queue_members', filter: `id=eq.${memberId}` }, handleRealtimeEvent)
-            .subscribe(status => log(PAGE_SOURCE, `Статус Realtime подписки: ${status}`));
+        const channel = service.subscribe(`wait-page-${memberId}`, { event: '*', schema: 'public', table: 'queue_members', filter: `id=eq.${memberId}` }, handleRealtimeEvent);
         
         const handlePageShow = (event) => {
             if (event.persisted) {
                 log(PAGE_SOURCE, 'Страница восстановлена из кеша, принудительно обновляем.');
                 checkMyStatus();
             }
+            setNotificationPermission(Notification.permission);
+        };
+        
+        const handleVisibilityChange = () => {
+             if (document.visibilityState === 'visible') setNotificationPermission(Notification.permission);
         };
 
         window.addEventListener('pageshow', handlePageShow);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
         checkMyStatus();
 
         return () => {
-            supabase.removeChannel(channel);
+            service.removeSubscription(channel);
             window.removeEventListener('pageshow', handlePageShow);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
     }, [memberId, queueId]);
 
     useEffect(() => {
         if (myInfo) {
             if (myInfo.status === 'called' && !notificationTriggered.current) {
-                log(PAGE_SOURCE, 'Статус изменился на "called", триггерим уведомление.');
                 notificationTriggered.current = true;
                 document.title = "ВАША ОЧЕРЕДЬ!";
                 if (audioPlayer.current) audioPlayer.current.play().catch(e => log(PAGE_SOURCE, 'Ошибка воспроизведения аудио', e));
+                if (notificationPermission === 'granted') {
+                    new Notification('Ваша очередь подошла!', {
+                        body: `Вас вызывают в очереди "${queueName}". Ваш код: ${myInfo.display_code}`,
+                        icon: '/vite.svg',
+                        tag: `queue-notification-${queueId}`,
+                    });
+                }
             }
             if (myInfo.status === 'serviced') {
                 log(PAGE_SOURCE, 'Сессия завершена (serviced), очищаем localStorage.');
-                localStorage.removeItem('my-queue-session');
+                clearActiveSession();
             }
         }
-    }, [myInfo]);
+    }, [myInfo, notificationPermission, queueName, queueId]);
     
-    if (status === 'loading') return (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-            <Spinner />
-        </div>
-    );
-    
-    if (status === 'error') return (
-        <div className={`container ${styles.errorContainer}`}>
-            {errorMessage}
-        </div>
-    );
+    if (status === 'loading') return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spinner /></div>;
+    if (status === 'error') return <div className={`container ${styles.errorContainer}`}>{errorMessage}</div>;
     
     return (
         <div className={`container ${styles.pageContainer} ${myInfo?.status === 'called' ? 'called-animation' : ''}`}>
@@ -168,24 +164,34 @@ function WaitPage() {
                 {myInfo?.status === 'serviced' && (<div className={`${styles.statusBox} ${styles.statusServiced}`}><h2>Ваше обслуживание завершено.</h2></div>)}
                 
                 {(myInfo?.status === 'waiting' || myInfo?.status === 'called') && (
-                    <Button 
-                        onClick={handleLeaveQueue}
-                        disabled={isLeaving}
-                        className={styles.leaveButton}
-                    >
-                        {isLeaving ? 'Выходим...' : 'Выйти из очереди'}
+                    <Button onClick={handleLeaveQueue} isLoading={isLeaving} className={styles.leaveButton}>
+                        Выйти из очереди
                     </Button>
                 )}
             </div>
             
-            {/* 4. ДОБАВЛЯЕМ КОМПОНЕНТ В РЕНДЕР */}
-            <ConfirmationModal 
-                isOpen={confirmation.isOpen}
-                onClose={() => setConfirmation({ ...confirmation, isOpen: false })}
-                onConfirm={confirmation.onConfirm}
-                title={confirmation.title}
-                confirmText={confirmation.confirmText}
-            >
+            {notificationPermission === 'default' && myInfo?.status === 'waiting' && (
+                <Card className={styles.notificationPrompt}>
+                    <div className={styles.promptIcon}><Bell size={24} /></div>
+                    <div className={styles.promptText}>
+                        <h4>Не пропустите свою очередь!</h4>
+                        <p>Разрешите нам присылать уведомления, и мы сообщим, когда вас вызовут.</p>
+                    </div>
+                    <Button onClick={requestNotificationPermission} className={styles.promptButton}>Включить</Button>
+                </Card>
+            )}
+
+            {notificationPermission === 'denied' && myInfo?.status === 'waiting' && (
+                 <Card className={`${styles.notificationPrompt} ${styles.notificationPromptDenied}`}>
+                     <div className={styles.promptIcon}><BellOff size={24} /></div>
+                     <div className={styles.promptText}>
+                        <h4>Уведомления выключены</h4>
+                        <p>Вы заблокировали уведомления. Чтобы включить их, измените настройки сайта.</p>
+                    </div>
+                </Card>
+            )}
+            
+            <ConfirmationModal isOpen={confirmation.isOpen} onClose={() => setConfirmation({ ...confirmation, isOpen: false })} onConfirm={confirmation.onConfirm} title={confirmation.title} confirmText={confirmation.confirmText}>
                 {confirmation.message}
             </ConfirmationModal>
         </div>

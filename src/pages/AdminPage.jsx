@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import QRCode from 'qrcode';
 import { QrCode, Check, PhoneCall, UserX, ChevronRight, MoreVertical, Undo2, PauseCircle, PlayCircle, Users, Share2 } from 'lucide-react';
+import { useQueue } from '../context/QueueContext';
+import * as service from '../services/supabaseService'; // Импортируем сервис
 
 import Card from '../components/Card';
 import Modal from '../components/Modal';
@@ -16,143 +16,58 @@ import log from '../utils/logger';
 const PAGE_SOURCE = 'AdminPage';
 
 function AdminPage() {
-    const { secretKey } = useParams();
+    const { 
+      queue, 
+      members, 
+      loading, 
+      error, 
+      qrCodeUrl, 
+      joinUrl, 
+      calledMember, 
+      waitingMembersCount,
+      setQueue
+    } = useQueue();
+    
     const navigate = useNavigate();
-    const location = useLocation(); 
+    const location = useLocation();
 
-    const [queue, setQueue] = useState(null);
-    const [members, setMembers] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [qrCodeUrl, setQrCodeUrl] = useState('');
-    const [joinUrl, setJoinUrl] = useState('');
     const [isButtonLoading, setIsButtonLoading] = useState(false);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
-    
     const [confirmation, setConfirmation] = useState({
         isOpen: false,
         title: '',
         message: null,
         onConfirm: () => {},
     });
-
-    const listRef = useRef(null);
+    
+    const [isCopied, setIsCopied] = useState(false);
+    
     const menuRef = useRef(null);
 
-    const calledMember = members.find(m => m.status === 'called');
-    const waitingMembersCount = members.filter(m => m.status === 'waiting').length;
-
-    const fetchAllData = useCallback(async (showLoader = false) => {
-        if (showLoader) setLoading(true);
-        setError(null);
-        log(PAGE_SOURCE, 'Загрузка всех данных...');
-        try {
-            const { data: qData, error: qError } = await supabase
-                .from('queues').select('*').eq('admin_secret_key', secretKey).single();
-            if (qError || !qData) throw new Error("Очередь не найдена или была удалена.");
-            setQueue(qData);
-
-            const { data: mData, error: mError } = await supabase
-                .from('queue_members').select('*').eq('queue_id', qData.id).order('ticket_number');
-            if (mError) throw new Error("Не удалось загрузить участников.");
-            setMembers(mData || []);
-
-            if (showLoader) {
-                const currentJoinUrl = `${window.location.origin}/join/${qData.id}`;
-                setJoinUrl(currentJoinUrl);
-                const qrUrl = await QRCode.toDataURL(currentJoinUrl);
-                setQrCodeUrl(qrUrl);
-                
-                if (location.state?.fromCreation) {
-                    setIsModalOpen(true);
-                }
-            }
-        } catch (err) {
-            log(PAGE_SOURCE, 'Ошибка при загрузке:', err.message);
-            setError(err.message);
-            setQueue(null);
-        } finally {
-            if (showLoader) setLoading(false);
-        }
-    }, [secretKey, location.state]);
-
     useEffect(() => {
-        if (!queue) {
-            return;
+        if (!loading && location.state?.fromCreation) {
+            setIsModalOpen(true);
+            navigate(location.pathname, { replace: true });
         }
-        const handleRealtimeEvent = (payload) => {
-            log(PAGE_SOURCE, `Realtime событие для УЧАСТНИКА ${payload.eventType} получено`);
-            if (payload.eventType === 'INSERT') {
-                setMembers(currentMembers => [...currentMembers, payload.new].sort((a,b) => a.ticket_number - b.ticket_number));
-            }
-            if (payload.eventType === 'UPDATE') {
-                setMembers(currentMembers => currentMembers.map(m => m.id === payload.new.id ? payload.new : m));
-            }
-            if (payload.eventType === 'DELETE') {
-                setMembers(currentMembers => currentMembers.filter(m => m.id !== payload.old.id));
-            }
-        };
-
-        const channel = supabase.channel(`admin-page-${queue.id}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queue.id}` }, handleRealtimeEvent)
-            .subscribe(status => log(PAGE_SOURCE, `Статус подписки на УЧАСТНИКОВ: ${status}`));
-        
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, [queue]);
+    }, [loading, location, navigate]);
     
     useEffect(() => {
-        if (!queue) return;
-        const handleQueueUpdate = (payload) => {
-             log(PAGE_SOURCE, `Realtime событие для ОЧЕРЕДИ ${payload.eventType} получено`);
-             setQueue(payload.new);
-        };
-        const queueChannel = supabase.channel(`admin-queue-status-${queue.id}`, { config: { broadcast: { self: true } } })
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'queues', filter: `id=eq.${queue.id}` }, handleQueueUpdate)
-            .subscribe(status => log(PAGE_SOURCE, `Статус подписки на ОЧЕРЕДЬ: ${status}`));
-
-        return () => {
-            supabase.removeChannel(queueChannel);
-        };
-    }, [queue]);
-
-
-    useEffect(() => {
-        const handlePageShow = (event) => {
-            if (event.persisted) {
-                log(PAGE_SOURCE, 'Страница восстановлена из bfcache, принудительно обновляем.');
-                fetchAllData(true);
-            }
-        };
-        
         const handleClickOutside = (event) => {
             if (menuRef.current && !menuRef.current.contains(event.target)) {
                 setIsMenuOpen(false);
             }
         };
-
-        window.addEventListener('pageshow', handlePageShow);
         document.addEventListener('mousedown', handleClickOutside);
-        
-        fetchAllData(true);
-        
-        return () => {
-            window.removeEventListener('pageshow', handlePageShow);
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [fetchAllData]);
-
-    const autoScroll = useCallback(() => { /* ... */ }, [members]);
-    useEffect(() => { autoScroll(); }, [members, autoScroll]);
-
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+    
     const handleMainButtonClick = async () => {
         setIsButtonLoading(true);
         const memberToUpdate = calledMember || members.find(m => m.status === 'waiting');
         if (memberToUpdate) {
             const newStatus = calledMember ? 'serviced' : 'called';
-            await supabase.from('queue_members').update({ status: newStatus }).eq('id', memberToUpdate.id);
+            await service.updateMemberStatus(memberToUpdate.id, newStatus);
         }
         setIsButtonLoading(false);
     };
@@ -161,11 +76,7 @@ function AdminPage() {
         if (!calledMember) return;
         setIsButtonLoading(true);
         try {
-            const { error } = await supabase
-                .from('queue_members')
-                .update({ status: 'waiting' })
-                .eq('id', calledMember.id);
-            if (error) throw error;
+            await service.updateMemberStatus(calledMember.id, 'waiting');
         } catch (err) {
             toast.error("Не удалось вернуть участника в очередь.");
         } finally {
@@ -177,12 +88,7 @@ function AdminPage() {
         if (!queue) return;
         const newStatus = queue.status === 'active' ? 'paused' : 'active';
         const actionText = newStatus === 'paused' ? 'приостановлена' : 'возобновлена';
-
-        const { error } = await supabase
-            .from('queues')
-            .update({ status: newStatus })
-            .eq('id', queue.id);
-        
+        const { error } = await service.updateQueueStatus(queue.id, newStatus);
         if (error) {
             toast.error("Не удалось изменить статус очереди.");
         } else {
@@ -193,18 +99,17 @@ function AdminPage() {
 
     const handleCallSpecific = async (memberId) => {
         if (calledMember) { toast.error('Завершите текущее обслуживание.'); return; }
-        await supabase.from('queue_members').update({ status: 'called' }).eq('id', memberId);
+        await service.updateMemberStatus(memberId, 'called');
     };
     
     const handleRemoveMember = (member) => {
         setConfirmation({
             isOpen: true,
             title: 'Удалить участника?',
-            message: (
-                <p>Вы уверены, что хотите удалить <strong>{member.member_name} ({member.display_code})</strong> из очереди?</p>
-            ),
+            message: <p>Вы уверены, что хотите удалить <strong>{member.member_name} ({member.display_code})</strong> из очереди?</p>,
+            confirmText: 'Да, удалить',
             onConfirm: async () => {
-                await supabase.from('queue_members').delete().eq('id', member.id);
+                await service.deleteMember(member.id);
                 toast.success(`Участник ${member.member_name} удален.`);
             },
         });
@@ -223,11 +128,9 @@ function AdminPage() {
                         className={styles.toastButtonConfirm}
                         onClick={() => {
                             toast.dismiss(t.id);
-                            const toastId = toast.loading(`Удаляем очередь "${queue.name}"...`)
+                            const toastId = toast.loading(`Удаляем очередь "${queue.name}"...`);
                             const performDelete = async () => {
-                                const { error } = await supabase.rpc('delete_queue_and_members', {
-                                    queue_id_to_delete: queue.id
-                                });
+                                const { error } = await service.deleteQueue(queue.id);
 
                                 if (error) {
                                     toast.error(`Не удалось удалить очередь "${queue.name}".`, { id: toastId });
@@ -250,15 +153,14 @@ function AdminPage() {
             </div>
         ), { duration: 8000, position: 'top-center' });
     };
-    
-    // --- НОВАЯ ФУНКЦИЯ ДЛЯ КНОПКИ "ПОДЕЛИТЬСЯ" ---
+
     const handleShare = async () => {
+        if (isCopied) return;
         const shareData = {
             title: `Присоединяйтесь к очереди: ${queue.name}`,
             text: `Ссылка для входа в очередь "${queue.name}"`,
             url: joinUrl,
         };
-
         if (navigator.share) {
             try {
                 await navigator.share(shareData);
@@ -267,10 +169,11 @@ function AdminPage() {
                 log(PAGE_SOURCE, 'Ошибка Web Share API:', err);
             }
         } else {
-            // Фолбэк: копирование в буфер обмена
             try {
                 await navigator.clipboard.writeText(joinUrl);
-                toast.success('Ссылка скопирована в буфер обмена!');
+                setIsCopied(true);
+                toast.success('Ссылка на очередь скопирована!');
+                setTimeout(() => setIsCopied(false), 2000);
             } catch (err) {
                 toast.error('Не удалось скопировать ссылку.');
                 log(PAGE_SOURCE, 'Ошибка копирования в буфер:', err);
@@ -302,7 +205,6 @@ function AdminPage() {
                             </div>
                         )}
                     </div>
-
                     <div className={styles.headerCenter}>
                         <h1 className={styles.headerTitle}>{queue?.name}</h1>
                         <div className={styles.queueCount}>
@@ -310,7 +212,6 @@ function AdminPage() {
                             <span>{queue?.status === 'active' ? 'Активна' : 'Пауза'} | В очереди: {waitingMembersCount}</span>
                         </div>
                     </div>
-                    
                     <div className={styles.headerActions}>
                         <button onClick={handleToggleQueueStatus} className={styles.controlButton} title={queue?.status === 'active' ? 'Приостановить запись' : 'Возобновить запись'}>
                             {queue?.status === 'active' ? <PauseCircle size={24} color="#ff9500" /> : <PlayCircle size={24} color="var(--accent-green)" />}
@@ -321,7 +222,7 @@ function AdminPage() {
                     </div>
                 </div>
             </header>
-            <main ref={listRef} className={`container ${styles.mainContent}`}>
+            <main className={`container ${styles.mainContent}`}>
                 <div className={styles.memberList}>
                     {members.map(member => {
                         const memberCardClasses = [ styles.memberCard, member.status === 'called' && styles.called, member.status === 'serviced' && styles.serviced ].filter(Boolean).join(' ');
@@ -362,39 +263,30 @@ function AdminPage() {
                 <div className={`container ${styles.footerActions}`}>
                     {calledMember ? (
                         <>
-                            <Button onClick={handleReturnToQueue} disabled={isButtonLoading} className={styles.returnButton}>
+                            <Button onClick={handleReturnToQueue} isLoading={isButtonLoading} className={styles.returnButton}>
                                 <Undo2 size={20} /> Вернуть
                             </Button>
-                            <Button onClick={handleMainButtonClick} disabled={isButtonLoading} className={styles.completeButton}>
+                            <Button onClick={handleMainButtonClick} isLoading={isButtonLoading} className={styles.completeButton}>
                                 <Check size={20} /> Завершить ({calledMember.display_code || calledMember.ticket_number})
                             </Button>
                         </>
                     ) : (
-                        <Button onClick={handleMainButtonClick} disabled={waitingMembersCount === 0 || isButtonLoading} className={styles.callNextButton}>
-                            {isButtonLoading ? '...' : <><PhoneCall size={20} /> Вызвать следующего</>}
+                        <Button onClick={handleMainButtonClick} isLoading={isButtonLoading} disabled={waitingMembersCount === 0} className={styles.callNextButton}>
+                            <PhoneCall size={20} /> Вызвать следующего
                         </Button>
                     )}
                 </div>
             </footer>
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Покажите QR-код или отправьте ссылку">
                 <div className={styles.modalContent}>
-                    {qrCodeUrl && <img src={qrCodeUrl} alt="QR Code" className={styles.qrImage} />}
-                    <p className={styles.joinLink}>{joinUrl}</p>
-                    {/* --- ИЗМЕНЕНИЕ ЗДЕСЬ --- */}
-                    <Button onClick={handleShare}>
-                        <Share2 size={18} />
-                        Поделиться
+                    {qrCodeUrl ? <img src={qrCodeUrl} alt="QR Code" className={styles.qrImage} /> : <Spinner />}
+                    <p className={styles.joinLink}>{joinUrl || 'Генерация ссылки...'}</p>
+                    <Button onClick={handleShare} disabled={!joinUrl || isCopied}>
+                        {isCopied ? (<><Check size={18} /> Скопировано!</>) : (<><Share2 size={18} /> Поделиться</>)}
                     </Button>
                 </div>
             </Modal>
-            
-            <ConfirmationModal 
-                isOpen={confirmation.isOpen}
-                onClose={() => setConfirmation({ ...confirmation, isOpen: false })}
-                onConfirm={confirmation.onConfirm}
-                title={confirmation.title}
-                confirmText="Удалить"
-            >
+            <ConfirmationModal isOpen={confirmation.isOpen} onClose={() => setConfirmation({ ...confirmation, isOpen: false })} onConfirm={confirmation.onConfirm} title={confirmation.title} confirmText="Удалить">
                 {confirmation.message}
             </ConfirmationModal>
         </div>

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { supabase } from '../supabaseClient';
 import QRCode from 'qrcode';
 import Spinner from '../components/Spinner';
+import * as service from '../services/supabaseService';
 
 function PrintPage() {
     const { queueId } = useParams();
@@ -13,8 +13,7 @@ function PrintPage() {
     useEffect(() => {
         const generateQR = async () => {
             try {
-                const { data, error } = await supabase
-                    .from('queues').select('name').eq('id', queueId).single();
+                const { data, error } = await service.getQueueById(queueId);
                 if (error) throw error;
                 setQueueName(data.name);
                 const joinUrl = `${window.location.origin}/join/${queueId}`;
@@ -38,7 +37,6 @@ function PrintPage() {
         }
     `;
     
-    // --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
     if (loading) return (
         <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', gap: '16px', fontFamily: 'sans-serif' }}>
             <Spinner />
