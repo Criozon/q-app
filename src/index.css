@@ -8,12 +8,12 @@
   --background: #f0f2f5; 
   --card-background: #ffffff;
   --text-primary: #1d1d1f;
-  --text-secondary: #6e6e73; /* <-- ВОЗВРАЩЕН */
+  --text-secondary: #6e6e73;
   --accent-blue: #007aff;
-  --accent-green: #34c759; /* <-- ВОЗВРАЩЕН */
-  --accent-red: #ff3b30;   /* <-- ВОЗВРАЩЕН */
+  --accent-green: #34c759;
+  --accent-red: #ff3b30;
   --border-color: #d1d1d6;
-  --highlight-green: #d4edda; /* <-- ВОЗВРАЩЕН */
+  --highlight-green: #d4edda;
 }
 
 /* ==========================================================================
@@ -55,9 +55,15 @@ h1, h2, h3, h4, h5, h6 { margin: 0; font-weight: 600; }
    4. Анимация 
    ========================================================================== */
 @keyframes blink-animation {
-  0% { background-color: transparent; }
-  50% { background-color: var(--highlight-green); }
-  100% { background-color: transparent; }
+  0% { 
+    background-color: var(--card-background); 
+  }
+  50% { 
+    background-color: var(--highlight-green); 
+  }
+  100% { 
+    background-color: var(--card-background); 
+  }
 }
 
 .called-animation {

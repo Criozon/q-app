@@ -1,6 +1,5 @@
 .pageContainer {
   padding-top: 60px;
-  /* Добавим отступ снизу, чтобы было место для нового списка */
   padding-bottom: 60px; 
 }
 
@@ -127,44 +126,4 @@
   color: var(--accent-red);
 }
 
-.toastContainer {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  font-size: 15px;
-}
-
-.toastContainer strong {
-  color: var(--text-primary);
-}
-
-.toastButtons {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-.toastButton {
-  border: none;
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.toastButtonConfirm {
-  background-color: var(--accent-red);
-  color: white;
-}
-.toastButtonConfirm:hover {
-  background-color: #d93228;
-}
-
-.toastButtonCancel {
-  background-color: #e5e5e5;
-  color: var(--text-primary);
-}
-.toastButtonCancel:hover {
-  background-color: #d1d1d6;
-}
+/* Стили для toast удалены, так как они больше не нужны */

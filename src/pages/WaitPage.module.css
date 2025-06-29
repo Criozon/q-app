@@ -78,21 +78,20 @@
   background-color: var(--card-background);
 }
 
+/* --- ИСПРАВЛЕНИЕ: Кнопка выхода --- */
 .leaveButton {
   margin-top: 30px;
-  background-color: #e5e5e5 !important; /* Делаем ее серой */
+  background-color: #e5e5e5 !important;
   color: var(--text-primary) !important;
   font-weight: 500 !important;
-  width: auto !important; /* Кнопка будет по ширине контента */
-  padding-left: 24px !important;
-  padding-right: 24px !important;
+  /* --- ИСПРАВЛЕНО: Удалены лишние правила. Центрирование теперь работает от .waitCard --- */
 }
 
 .leaveButton:hover:not(:disabled) {
   background-color: #d1d1d6 !important;
 }
 
-/* --- НОВЫЕ СТИЛИ ДЛЯ ПРИЗЫВА --- */
+/* --- Стили для призыва к уведомлениям --- */
 .notificationPrompt {
   margin-top: 24px;
   padding: 16px !important;
@@ -125,7 +124,8 @@
 }
 
 .promptButton {
-  width: auto !important; /* Кнопка по ширине контента */
+  /* --- ИСПРАВЛЕНО: Задаем ширину, где нужно. Важно, чтобы это было отдельным классом --- */
+  width: auto;
   padding: 12px 20px !important;
   font-size: 15px !important;
   flex-shrink: 0;

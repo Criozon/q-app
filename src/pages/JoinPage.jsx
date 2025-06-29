@@ -63,27 +63,43 @@ function JoinPage() {
             return;
         }
         setIsJoining(true);
+        const toastId = toast.loading('Встаем в очередь...');
+
+        // --- НАЧАЛО ИЗМЕНЕНИЙ: БЛОК С ТАЙМ-АУТОМ ---
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Timeout")), 25000) // 25 секунд
+        );
+        
         try {
             const chars = 'ACEHKMOPTX'; 
             const randomChar = chars.charAt(Math.floor(Math.random() * chars.length));
             const randomNumber = Math.floor(10 + Math.random() * 90);
             const displayCode = `${randomChar}${randomNumber}`;
             
-            const { data, error } = await service.createMember({ queue_id: queueId, member_name: memberName, display_code: displayCode });
+            const { data, error } = await Promise.race([
+                service.createMember({ queue_id: queueId, member_name: memberName, display_code: displayCode }),
+                timeoutPromise
+            ]);
+            // --- КОНЕЦ ИЗМЕНЕНИЙ ---
+
             if (error) throw error; 
 
             const session = { memberId: data.id, queueId: queueId };
             setActiveSession(session);
             
-            toast.success(`Вы успешно встали в очередь!`);
+            toast.success(`Вы успешно встали в очередь!`, { id: toastId });
             navigate(`/wait/${queueId}/${data.id}`);
         } catch (err) {
             log('JoinPage', 'ОШИБКА в handleJoinQueue:', err.message, 'error');
-            if (err.message.includes('Queue is currently paused')) {
-                toast.error("Запись в очередь приостановлена администратором.");
+            // --- НАЧАЛО ИЗМЕНЕНИЙ: ОБРАБОТКА ОШИБОК ---
+            if (err.message === "Timeout") {
+                toast.error('Сервер отвечает слишком долго. Попробуйте, пожалуйста, еще раз.', { id: toastId, duration: 6000 });
+            } else if (err.message.includes('Queue is currently paused')) {
+                toast.error("Запись в очередь приостановлена администратором.", { id: toastId });
             } else {
-                toast.error('Не удалось встать в очередь.');
+                toast.error('Не удалось встать в очередь.', { id: toastId });
             }
+            // --- КОНЕЦ ИЗМЕНЕНИЙ ---
         } finally {
             setIsJoining(false);
         }

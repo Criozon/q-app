@@ -1,9 +1,8 @@
 .button {
-  display: inline-flex;
+  display: inline-flex; 
   align-items: center;
   justify-content: center;
   gap: 8px;
-  width: 100%;
   padding: 16px;
   font-size: 17px;
   font-weight: 600;
@@ -12,30 +11,48 @@
   border: none;
   border-radius: 12px;
   cursor: pointer;
-  transition: transform 0.1s ease-in-out, background-color 0.2s, opacity 0.2s;
+  transition: transform 0.1s ease-in-out, background-color 0.2s;
+  position: relative; 
+  vertical-align: middle;
 }
 
-/* Эффект при нажатии */
+/* Этот класс будет передан в Spinner для настройки его контейнера */
+.spinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  
+  /* --- ИЗМЕНЕНИЕ: Переопределяем размер спиннера для кнопки --- */
+  width: 24px;
+  height: 24px;
+}
+
+/* --- ИЗМЕНЕНИЕ: Настраиваем внутреннее кольцо спиннера, ТОЛЬКО когда он внутри кнопки --- */
+.spinner .ring {
+  border-width: 3px; /* Делаем кольцо тоньше */
+  border-color: rgba(255, 255, 255, 0.3); /* Полупрозрачный белый */
+  border-top-color: #ffffff; /* Сплошной белый */
+}
+
+.content {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: visibility 0s, opacity 0.2s linear;
+}
+
+.loadingState .content {
+  visibility: hidden;
+  opacity: 0;
+}
+
 .button:not(:disabled):active {
   transform: scale(0.98);
 }
 
-/* Состояние disabled */
 .button:disabled {
   background-color: #a0a0a0;
   cursor: not-allowed;
-  opacity: 0.5;
-}
-
-/* --- НОВЫЕ СТИЛИ --- */
-.loadingState {
-  /* Чтобы спиннер не "прыгал", зададим минимальную высоту */
-  min-height: 55px; /* (16px padding + 16px padding + 17px font-size + 6px buffer) */
-}
-
-/* Мы можем переопределить стили спиннера специально для кнопки, чтобы он был меньше */
-.loadingState .spinner {
-  width: 24px;
-  height: 24px;
-  border-width: 3px;
+  opacity: 0.7;
 }

@@ -1,11 +1,9 @@
 import React from 'react';
 import styles from './Button.module.css';
-import Spinner from './Spinner'; // 1. Импортируем наш спиннер
+import Spinner from './Spinner';
 
-// 2. Добавляем isLoading в пропсы
 function Button({ children, disabled, onClick, style, title, className, isLoading = false }) {
   
-  // 3. Объединяем классы, добавляя класс для состояния загрузки
   const combinedClassName = [
     styles.button, 
     isLoading ? styles.loadingState : '',
@@ -16,13 +14,17 @@ function Button({ children, disabled, onClick, style, title, className, isLoadin
     <button
       className={combinedClassName} 
       style={style}
-      // 4. Кнопка неактивна, пока идет загрузка
       disabled={disabled || isLoading}
       onClick={onClick}
       title={title}
     >
-      {/* 5. Показываем спиннер или контент */}
-      {isLoading ? <Spinner /> : children}
+      {/* Контент кнопки. Он будет скрываться через CSS */}
+      <span className={styles.content}>
+        {children}
+      </span>
+
+      {/* Спиннер будет появляться поверх контента */}
+      {isLoading && <Spinner className={styles.spinner} />}
     </button>
   );
 }

@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { QrCode, Check, PhoneCall, UserX, ChevronRight, MoreVertical, Undo2, PauseCircle, PlayCircle, Users, Share2 } from 'lucide-react';
 import { useQueue } from '../context/QueueContext';
-import * as service from '../services/supabaseService'; // Импортируем сервис
+import * as service from '../services/supabaseService'; 
 
 import Card from '../components/Card';
 import Modal from '../components/Modal';
@@ -34,11 +34,14 @@ function AdminPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isButtonLoading, setIsButtonLoading] = useState(false);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    
     const [confirmation, setConfirmation] = useState({
         isOpen: false,
         title: '',
         message: null,
         onConfirm: () => {},
+        confirmText: 'Подтвердить',
+        isDestructive: false,
     });
     
     const [isCopied, setIsCopied] = useState(false);
@@ -108,6 +111,7 @@ function AdminPage() {
             title: 'Удалить участника?',
             message: <p>Вы уверены, что хотите удалить <strong>{member.member_name} ({member.display_code})</strong> из очереди?</p>,
             confirmText: 'Да, удалить',
+            isDestructive: true,
             onConfirm: async () => {
                 await service.deleteMember(member.id);
                 toast.success(`Участник ${member.member_name} удален.`);
@@ -119,39 +123,33 @@ function AdminPage() {
         setIsMenuOpen(false);
         if (!queue) return;
 
-        toast((t) => (
-            <div>
-                <p style={{ fontWeight: 500, margin: 0 }}>Вы уверены, что хотите удалить очередь <strong style={{color: 'var(--text-primary)'}}>{queue.name}</strong>? Это действие необратимо.</p>
-                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px' }}>
-                    <Button onClick={() => toast.dismiss(t.id)} className={styles.toastButtonCancel}>Отмена</Button>
-                    <Button
-                        className={styles.toastButtonConfirm}
-                        onClick={() => {
-                            toast.dismiss(t.id);
-                            const toastId = toast.loading(`Удаляем очередь "${queue.name}"...`);
-                            const performDelete = async () => {
-                                const { error } = await service.deleteQueue(queue.id);
+        setConfirmation({
+            isOpen: true,
+            title: 'Удалить очередь?',
+            message: <p>Вы уверены, что хотите удалить очередь <strong>"{queue.name}"</strong>? Это действие необратимо.</p>,
+            confirmText: 'Да, удалить',
+            isDestructive: true,
+            onConfirm: () => {
+                const toastId = toast.loading(`Удаляем очередь "${queue.name}"...`);
+                const performDelete = async () => {
+                    const { error } = await service.deleteQueue(queue.id);
 
-                                if (error) {
-                                    toast.error(`Не удалось удалить очередь "${queue.name}".`, { id: toastId });
-                                } else {
-                                    const savedQueuesRaw = localStorage.getItem('my-queues');
-                                    if (savedQueuesRaw) {
-                                        let myQueues = JSON.parse(savedQueuesRaw);
-                                        myQueues = myQueues.filter(q => q.id !== queue.id);
-                                        localStorage.setItem('my-queues', JSON.stringify(myQueues));
-                                    }
-                                    toast.success(`Очередь "${queue.name}" удалена.`, { id: toastId });
-                                    navigate('/');
-                                }
-                            };
-                            performDelete();
-                        }}>
-                        Да, удалить
-                    </Button>
-                </div>
-            </div>
-        ), { duration: 8000, position: 'top-center' });
+                    if (error) {
+                        toast.error(`Не удалось удалить очередь "${queue.name}".`, { id: toastId });
+                    } else {
+                        const savedQueuesRaw = localStorage.getItem('my-queues');
+                        if (savedQueuesRaw) {
+                            let myQueues = JSON.parse(savedQueuesRaw);
+                            myQueues = myQueues.filter(q => q.id !== queue.id);
+                            localStorage.setItem('my-queues', JSON.stringify(myQueues));
+                        }
+                        toast.success(`Очередь "${queue.name}" удалена.`, { id: toastId });
+                        navigate('/');
+                    }
+                };
+                performDelete();
+            }
+        });
     };
 
     const handleShare = async () => {
@@ -286,7 +284,15 @@ function AdminPage() {
                     </Button>
                 </div>
             </Modal>
-            <ConfirmationModal isOpen={confirmation.isOpen} onClose={() => setConfirmation({ ...confirmation, isOpen: false })} onConfirm={confirmation.onConfirm} title={confirmation.title} confirmText="Удалить">
+            
+            <ConfirmationModal 
+                isOpen={confirmation.isOpen} 
+                onClose={() => setConfirmation({ ...confirmation, isOpen: false })} 
+                onConfirm={confirmation.onConfirm} 
+                title={confirmation.title} 
+                confirmText={confirmation.confirmText}
+                isDestructive={confirmation.isDestructive}
+            >
                 {confirmation.message}
             </ConfirmationModal>
         </div>

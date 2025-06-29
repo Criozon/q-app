@@ -7,10 +7,15 @@ function ConfirmationModal({
     isOpen, 
     onClose, 
     onConfirm,
+    onCancelAction = onClose,
     title, 
-    children, // `children` будет текстом-подтверждением
+    children,
     confirmText = 'Подтвердить',
-    cancelText = 'Отмена'
+    cancelText = 'Отмена',
+    // --- НАЧАЛО ИЗМЕНЕНИЙ ---
+    // 1. Добавляем новый пропс. По умолчанию действие НЕ является разрушительным.
+    isDestructive = false
+    // --- КОНЕЦ ИЗМЕНЕНИЙ ---
 }) {
   
   if (!isOpen) {
@@ -19,8 +24,21 @@ function ConfirmationModal({
 
   const handleConfirm = () => {
     onConfirm();
-    onClose(); // Закрываем модальное окно после подтверждения
+    onClose();
   };
+
+  const handleCancel = () => {
+    onCancelAction();
+    onClose();
+  }
+
+  // --- НАЧАЛО ИЗМЕНЕНИЙ ---
+  // 2. Динамически собираем классы для кнопки подтверждения
+  const confirmButtonClassName = [
+    styles.confirmButton, // Базовый класс
+    isDestructive ? styles.destructive : '' // Добавляем класс, если действие разрушительное
+  ].filter(Boolean).join(' ');
+  // --- КОНЕЦ ИЗМЕНЕНИЙ ---
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title}>
@@ -29,14 +47,17 @@ function ConfirmationModal({
       </div>
       <div className={styles.buttonContainer}>
         <Button 
-          onClick={onClose} 
+          onClick={handleCancel} 
           className={styles.cancelButton}
         >
           {cancelText}
         </Button>
         <Button 
           onClick={handleConfirm}
-          className={styles.confirmButton}
+          // --- НАЧАЛО ИЗМЕНЕНИЙ ---
+          // 3. Применяем собранные классы
+          className={confirmButtonClassName}
+          // --- КОНЕЦ ИЗМЕНЕНИЙ ---
         >
           {confirmText}
         </Button>

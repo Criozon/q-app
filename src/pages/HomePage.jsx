@@ -26,46 +26,38 @@ function HomePage() {
       title: '',
       message: null,
       onConfirm: () => {},
+      onCancelAction: () => {},
+      confirmText: 'Подтвердить',
+      cancelText: 'Отмена',
+      isDestructive: false, // Добавляем свойство в состояние
   });
 
   useEffect(() => {
     if (sessionInfo.status === 'valid' && sessionInfo.session) {
       const { session, queueName } = sessionInfo;
-      toast((t) => (
-        <div className={styles.toastContainer}>
-          <span>У вас есть активное место в очереди <strong>"{queueName}"</strong>. Вернуться?</span>
-          <div className={styles.toastButtons}>
-            <button
-              className={`${styles.toastButton} ${styles.toastButtonConfirm}`}
-              onClick={() => {
-                navigate(`/wait/${session.queueId}/${session.memberId}`);
-                toast.dismiss(t.id);
-              }}>
-              Да, вернуться
-            </button>
-            <button
-              className={`${styles.toastButton} ${styles.toastButtonCancel}`}
-              onClick={async () => {
-                toast.dismiss(t.id);
-                const toastId = toast.loading('Выходим из очереди...');
-                const { error: deleteError } = await service.deleteMember(session.memberId);
-                toast.dismiss(toastId);
+      
+      setConfirmation({
+        isOpen: true,
+        title: "Обнаружена активная сессия",
+        message: <p>Вы уже находитесь в очереди <strong>"{queueName}"</strong>. Хотите вернуться или выйти?</p>,
+        confirmText: "Да, вернуться",
+        cancelText: "Нет, выйти",
+        isDestructive: false, // Указываем, что это НЕ разрушительное действие
+        onConfirm: () => {
+          navigate(`/wait/${session.queueId}/${session.memberId}`);
+        },
+        onCancelAction: async () => {
+          const toastId = toast.loading('Выходим из очереди...');
+          const { error: deleteError } = await service.deleteMember(session.memberId);
+          toast.dismiss(toastId);
 
-                if (deleteError) {
-                  toast.error('Не удалось выйти из очереди.');
-                } else {
-                  clearActiveSession();
-                  toast.success('Вы успешно вышли из очереди.');
-                }
-              }}>
-              Нет, выйти
-            </button>
-          </div>
-        </div>
-      ), { 
-          id: 'restore-session-toast',
-          duration: 15000, 
-          position: "top-center" 
+          if (deleteError) {
+            toast.error('Не удалось выйти из очереди.');
+          } else {
+            clearActiveSession();
+            toast.success('Вы успешно вышли из очереди.');
+          }
+        }
       });
     }
   }, [sessionInfo, navigate]);
@@ -76,9 +68,18 @@ function HomePage() {
       return;
     }
     setIsLoading(true);
-    const toastId = toast.loading('Создаем очередь...');
+    const toastId = toast.loading('Создаем очередь... Это может занять до 30 секунд при первом запуске.');
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Timeout")), 25000)
+    );
+
     try {
-      const { data, error } = await service.createQueue({ name: queueName, description: queueDescription });
+      const { data, error } = await Promise.race([
+          service.createQueue({ name: queueName, description: queueDescription }),
+          timeoutPromise
+      ]);
+
       if (error) throw error;
       
       toast.success('Очередь создана!', { id: toastId });
@@ -93,7 +94,11 @@ function HomePage() {
       navigate(`/admin/${data.admin_secret_key}`, { state: { fromCreation: true } });
 
     } catch (error) {
-      toast.error('Не удалось создать очередь.', { id: toastId });
+      if (error.message === "Timeout") {
+        toast.error('Сервер отвечает слишком долго. Попробуйте, пожалуйста, еще раз.', { id: toastId, duration: 6000 });
+      } else {
+        toast.error('Не удалось создать очередь.', { id: toastId });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -105,6 +110,8 @@ function HomePage() {
           title: 'Удалить очередь?',
           message: <p>Вы уверены, что хотите удалить очередь <strong>"{queueToDelete.name}"</strong>? Это действие необратимо.</p>,
           confirmText: 'Да, удалить',
+          cancelText: 'Отмена',
+          isDestructive: true, // Указываем, что это РАЗРУШИТЕЛЬНОЕ действие
           onConfirm: () => {
               const originalQueues = [...myQueues];
               const updatedQueues = myQueues.filter(q => q.id !== queueToDelete.id);
@@ -122,7 +129,8 @@ function HomePage() {
                   }
               };
               performDelete();
-          }
+          },
+          onCancelAction: () => setConfirmation({ isOpen: false })
       });
   };
 
@@ -177,12 +185,17 @@ function HomePage() {
           </div>
         </Section>
       )}
+
       <ConfirmationModal 
           isOpen={confirmation.isOpen}
           onClose={() => setConfirmation({ ...confirmation, isOpen: false })}
           onConfirm={confirmation.onConfirm}
+          onCancelAction={confirmation.onCancelAction}
           title={confirmation.title}
-          confirmText={confirmation.confirmText}>
+          confirmText={confirmation.confirmText}
+          cancelText={confirmation.cancelText}
+          isDestructive={confirmation.isDestructive}
+          >
           {confirmation.message}
       </ConfirmationModal>
     </div>

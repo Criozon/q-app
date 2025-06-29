@@ -195,13 +195,17 @@
   background-color: var(--accent-red) !important; 
 }
 
-/* --- 3. СТИЛИ ДЛЯ ПУСТОГО СОСТОЯНИЯ --- */
+/* --- ИСПРАВЛЕНИЕ: СТИЛИ ДЛЯ ПУСТОГО СОСТОЯНИЯ --- */
 .emptyState {
     text-align: center;
     padding: 60px 20px;
     background-color: var(--card-background);
     border-radius: 16px;
     margin-top: 20px;
+    /* --- ДОБАВЛЕНО: Для центрирования кнопки --- */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
 .emptyStateIcon {
@@ -220,9 +224,8 @@
 }
 
 .emptyStateButton {
-    width: auto !important;
-    padding-left: 24px !important;
-    padding-right: 24px !important;
+    /* --- ИСПРАВЛЕНО: Удалены лишние правила. Кнопка теперь сама задает себе ширину --- */
+    width: auto;
 }
 /* --- КОНЕЦ НОВЫХ СТИЛЕЙ --- */
 
@@ -241,14 +244,19 @@
   gap: 12px;
 }
 
+.callNextButton,
+.completeButton {
+  /* --- ИСПРАВЛЕНО: Задаем ширину явно, где это нужно --- */
+  width: 100%;
+}
+
+
 .callNextButton {
   background-color: var(--accent-blue);
-  width: 100%;
 }
 
 .completeButton {
   background-color: var(--accent-green);
-  width: auto;
   flex-grow: 1;
 }
 

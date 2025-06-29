@@ -11,7 +11,11 @@
   gap: 12px;
 }
 
-/* Переопределяем стили для кнопок, используя наши классы */
+.buttonContainer > * {
+  flex-grow: 1;
+  width: 100%;
+}
+
 .cancelButton {
   background-color: #e5e5e5 !important;
   color: var(--text-primary) !important;
@@ -22,10 +26,16 @@
   background-color: #d1d1d6 !important;
 }
 
+/* --- ИЗМЕНЕНИЕ: Теперь .confirmButton по умолчанию синий (наследует стиль Button) --- */
 .confirmButton {
+  /* Мы не задаем цвет, он будет синим по умолчанию из базовых стилей Button.jsx */
+}
+
+/* --- ИЗМЕНЕНИЕ: Новый класс для разрушительных действий --- */
+.destructive {
   background-color: var(--accent-red) !important;
 }
 
-.confirmButton:hover:not(:disabled) {
-  background-color: #d93228 !important;
+.destructive:hover:not(:disabled) {
+  background-color: #d93228 !important; /* Темно-красный при наведении */
 }

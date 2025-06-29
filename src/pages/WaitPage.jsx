@@ -27,6 +27,12 @@ function WaitPage() {
     const audioPlayer = useRef(null);
     const [confirmation, setConfirmation] = useState({ isOpen: false, title: '', message: null, onConfirm: () => {} });
     
+    const waitCardClasses = [
+        styles.waitCard,
+        myInfo?.status === 'called' ? styles.called : '',
+        myInfo?.status === 'called' ? 'called-animation' : ''
+    ].filter(Boolean).join(' ');
+
     const requestNotificationPermission = async () => {
         if (!('Notification' in window)) {
             toast.error('Ваш браузер не поддерживает уведомления.');
@@ -72,7 +78,6 @@ function WaitPage() {
         log(PAGE_SOURCE, 'Проверка статуса...');
         try {
             const { data, error } = await service.getMemberById(memberId);
-            // Если участника нет, но очередь есть, значит его удалили
             if (!data && error) {
                  const { data: queueData } = await service.getQueueById(queueId);
                  if (queueData) {
@@ -105,20 +110,18 @@ function WaitPage() {
                  clearActiveSession();
                  setStatus('error');
                  setErrorMessage('Эта очередь была удалена администратором.');
-                 service.removeSubscription(memberChannel);
-                 service.removeSubscription(queueChannel); // Отписываемся и отсюда
+                 // Предполагая, что каналы названы так, чтобы их можно было найти
+                 service.removeSubscription(`wait-page-members-${queueId}`);
+                 service.removeSubscription(`wait-page-queue-${queueId}`);
                  return;
             }
 
-            // Если событие касается участников, просто перезапускаем полную проверку
             if (payload.table === 'queue_members') {
                 checkMyStatus();
             }
         };
 
-        // *** ИСПРАВЛЕНИЕ: Слушаем ВСЕ события в таблице участников для ЭТОЙ очереди ***
         const memberChannel = service.subscribe(`wait-page-members-${queueId}`, { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queueId}` }, handleRealtimeEvent);
-        // Дополнительная подписка на случай удаления самой очереди
         const queueChannel = service.subscribe(`wait-page-queue-${queueId}`, { event: 'DELETE', schema: 'public', table: 'queues', filter: `id=eq.${queueId}`}, handleRealtimeEvent);
         
         const handlePageShow = (event) => {
@@ -135,7 +138,7 @@ function WaitPage() {
 
         window.addEventListener('pageshow', handlePageShow);
         document.addEventListener('visibilitychange', handleVisibilityChange);
-        checkMyStatus(); // Первоначальная загрузка
+        checkMyStatus();
 
         return () => {
             service.removeSubscription(memberChannel);
@@ -143,12 +146,15 @@ function WaitPage() {
             window.removeEventListener('pageshow', handlePageShow);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, [memberId, queueId]); // Зависимости остаются прежними
+    }, [memberId, queueId]);
 
     useEffect(() => {
         if (myInfo) {
+            // --- НАЧАЛО ИЗМЕНЕНИЙ: ЛОГИКА ТРИГГЕРА И СБРОСА ---
+
+            // Если вызвали и флаг еще не поднят
             if (myInfo.status === 'called' && !notificationTriggered.current) {
-                notificationTriggered.current = true;
+                notificationTriggered.current = true; // Поднимаем флаг
                 document.title = "ВАША ОЧЕРЕДЬ!";
                 if (audioPlayer.current) audioPlayer.current.play().catch(e => log(PAGE_SOURCE, 'Ошибка воспроизведения аудио', e));
                 if (notificationPermission === 'granted') {
@@ -159,6 +165,15 @@ function WaitPage() {
                     });
                 }
             }
+
+            // Если вернули в очередь и флаг был поднят
+            if (myInfo.status === 'waiting' && notificationTriggered.current) {
+                notificationTriggered.current = false; // Сбрасываем флаг!
+                document.title = `Q-App - Ожидание в ${queueName || ''}`; // Возвращаем заголовок
+            }
+            
+            // --- КОНЕЦ ИЗМЕНЕНИЙ ---
+
             if (myInfo.status === 'serviced') {
                 log(PAGE_SOURCE, 'Сессия завершена (serviced), очищаем localStorage.');
                 clearActiveSession();
@@ -170,8 +185,8 @@ function WaitPage() {
     if (status === 'error') return <div className={`container ${styles.errorContainer}`}>{errorMessage}</div>;
     
     return (
-        <div className={`container ${styles.pageContainer} ${myInfo?.status === 'called' ? 'called-animation' : ''}`}>
-             <div className={`${styles.waitCard} ${myInfo?.status === 'called' ? styles.called : ''}`}>
+        <div className={`container ${styles.pageContainer}`}>
+             <div className={waitCardClasses}>
                 <audio ref={audioPlayer} src="/notification.mp3" preload="auto" />
                 <h2>Очередь: {queueName}</h2>
                 <hr className={styles.divider}/>
