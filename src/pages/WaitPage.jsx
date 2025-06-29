@@ -223,7 +223,6 @@ function WaitPage() {
                     <div className={`${styles.statusBox} ${styles.statusCalled}`}>
                         <h2>Вас вызывают!</h2>
                         <div className={styles.actionButtons}>
-                            {/* --- ИЗМЕНЕНИЕ: Кнопки поменялись местами --- */}
                             <Button onClick={handleDeclineCall} className={styles.declineButton}>
                                 <X size={20} /> Отказаться
                             </Button>
@@ -242,7 +241,8 @@ function WaitPage() {
 
                 {myInfo?.status === 'serviced' && (<div className={`${styles.statusBox} ${styles.statusServiced}`}><h2>Ваше обслуживание завершено.</h2></div>)}
                 
-                {(myInfo?.status === 'waiting' || myInfo?.status === 'called' || myInfo.status === 'acknowledged') && (
+                {/* --- ИЗМЕНЕНИЕ: Условие стало проще --- */}
+                {(myInfo?.status === 'waiting') && (
                     <Button onClick={handleLeaveQueue} isLoading={isLeaving} className={styles.leaveButton}>
                         Выйти из очереди
                     </Button>
