@@ -2,7 +2,6 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import { useParams } from 'react-router-dom';
 import QRCode from 'qrcode';
 import log from '../utils/logger';
-// 1. Импортируем функции сервиса
 import * as service from '../services/supabaseService';
 
 const PAGE_SOURCE = 'QueueContext';
@@ -22,13 +21,11 @@ export function QueueProvider({ children }) {
     setLoading(true);
     setError(null);
     try {
-      // 2. Используем сервис
       const { data: qData, error: qError } = await service.getQueueBySecret(secretKey);
       if (qError || !qData) throw new Error("Очередь не найдена или была удалена.");
       
       setQueue(qData);
 
-      // 3. Используем сервис
       const { data: mData, error: mError } = await service.getMembersByQueueId(qData.id);
       if (mError) throw new Error("Не удалось загрузить участников.");
       
@@ -67,18 +64,16 @@ export function QueueProvider({ children }) {
         setQueue(payload.new);
     };
 
-    // 4. Используем сервис для подписок
     const memberChannel = service.subscribe(`context-admin-members-${queue.id}`, { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queue.id}` }, handleMemberUpdate);
     const queueChannel = service.subscribe(`context-admin-queue-${queue.id}`, { event: 'UPDATE', schema: 'public', table: 'queues', filter: `id=eq.${queue.id}` }, handleQueueUpdate);
     
     return () => {
-      // 5. Используем сервис для отписки
       service.removeSubscription(memberChannel);
       service.removeSubscription(queueChannel);
     };
   }, [queue]);
 
-  const calledMember = members.find(m => m.status === 'called');
+  const calledMember = members.find(m => m.status === 'called' || m.status === 'acknowledged');
   const waitingMembersCount = members.filter(m => m.status === 'waiting').length;
 
   const value = { queue, members, loading, error, qrCodeUrl, joinUrl, calledMember, waitingMembersCount, setQueue };

@@ -49,6 +49,18 @@ function AdminPage() {
     const menuRef = useRef(null);
 
     useEffect(() => {
+        if (calledMember) {
+            const memberElement = document.getElementById(`member-${calledMember.id}`);
+            if (memberElement) {
+                memberElement.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center'
+                });
+            }
+        }
+    }, [calledMember]);
+
+    useEffect(() => {
         if (!loading && location.state?.fromCreation) {
             setIsModalOpen(true);
             navigate(location.pathname, { replace: true });
@@ -187,6 +199,15 @@ function AdminPage() {
     
     if (error) return <div className="container" style={{ textAlign: 'center', paddingTop: '40px' }}>{error}</div>;
 
+    const getStatusText = (status) => {
+        switch (status) {
+            case 'called': return 'Вызывается...';
+            case 'acknowledged': return '✅ Подтвердил, идет!';
+            case 'serviced': return 'Обслужен';
+            default: return 'Ожидает';
+        }
+    };
+
     return (
         <div className={styles.pageWrapper}>
             <header className={styles.header}>
@@ -223,13 +244,19 @@ function AdminPage() {
             <main className={`container ${styles.mainContent}`}>
                 <div className={styles.memberList}>
                     {members.map(member => {
-                        const memberCardClasses = [ styles.memberCard, member.status === 'called' && styles.called, member.status === 'serviced' && styles.serviced ].filter(Boolean).join(' ');
+                        const memberCardClasses = [ 
+                            styles.memberCard, 
+                            member.status === 'called' && styles.called,
+                            member.status === 'acknowledged' && styles.acknowledged,
+                            member.status === 'serviced' && styles.serviced 
+                        ].filter(Boolean).join(' ');
+                        
                         return (
                             <div id={`member-${member.id}`} key={member.id}>
                                 <Card className={memberCardClasses}>
                                     <div className={styles.memberInfo}>
                                         <p className={styles.memberName}>{member.display_code || `#${member.ticket_number}`} - {member.member_name}</p>
-                                        <p className={styles.memberStatus}>{member.status === 'called' ? 'Вызывается...' : (member.status === 'serviced' ? 'Обслужен' : 'Ожидает')}</p>
+                                        <p className={styles.memberStatus}>{getStatusText(member.status)}</p>
                                     </div>
                                     <div className={styles.memberActions}>
                                         {member.status === 'waiting' && <Button onClick={() => handleCallSpecific(member.id)} disabled={!!calledMember || isButtonLoading} className={`${styles.actionButton} ${styles.priorityCallButton}`} title="Приоритетный вызов"><ChevronRight size={20} /></Button>}

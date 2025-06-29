@@ -155,6 +155,11 @@
   border-left-color: var(--accent-green);
 }
 
+.memberCard.acknowledged {
+  border-left-color: var(--accent-blue);
+  background-color: #e3f2fd;
+}
+
 .memberCard.serviced {
   opacity: 0.4;
 }
@@ -195,14 +200,12 @@
   background-color: var(--accent-red) !important; 
 }
 
-/* --- ИСПРАВЛЕНИЕ: СТИЛИ ДЛЯ ПУСТОГО СОСТОЯНИЯ --- */
 .emptyState {
     text-align: center;
     padding: 60px 20px;
     background-color: var(--card-background);
     border-radius: 16px;
     margin-top: 20px;
-    /* --- ДОБАВЛЕНО: Для центрирования кнопки --- */
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -224,10 +227,8 @@
 }
 
 .emptyStateButton {
-    /* --- ИСПРАВЛЕНО: Удалены лишние правила. Кнопка теперь сама задает себе ширину --- */
     width: auto;
 }
-/* --- КОНЕЦ НОВЫХ СТИЛЕЙ --- */
 
 /* --- Подвал --- */
 .footer {
@@ -246,7 +247,6 @@
 
 .callNextButton,
 .completeButton {
-  /* --- ИСПРАВЛЕНО: Задаем ширину явно, где это нужно --- */
   width: 100%;
 }
 

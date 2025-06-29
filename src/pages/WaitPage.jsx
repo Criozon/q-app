@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Bell, BellOff } from 'lucide-react';
+import { Bell, BellOff, Check, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Button from '../components/Button';
 import Spinner from '../components/Spinner';
@@ -30,9 +30,35 @@ function WaitPage() {
     const waitCardClasses = [
         styles.waitCard,
         myInfo?.status === 'called' ? styles.called : '',
+        myInfo?.status === 'acknowledged' ? styles.acknowledged : '',
         myInfo?.status === 'called' ? 'called-animation' : ''
     ].filter(Boolean).join(' ');
 
+    const stopNotificationSound = () => {
+        if (audioPlayer.current) {
+            audioPlayer.current.pause();
+            audioPlayer.current.currentTime = 0;
+        }
+    };
+
+    const handleAcknowledgeCall = async () => {
+        stopNotificationSound();
+        const toastId = toast.loading('Подтверждаем...');
+        try {
+            const { error } = await service.updateMemberStatus(myInfo.id, 'acknowledged');
+            if (error) throw error;
+            toast.success('Администратор уведомлен, что вы идете!', { id: toastId });
+        } catch (err) {
+            toast.error('Не удалось отправить подтверждение.', { id: toastId });
+            audioPlayer.current?.play().catch(e => log(PAGE_SOURCE, 'Ошибка аудио', e));
+        }
+    };
+
+    const handleDeclineCall = () => {
+        stopNotificationSound();
+        handleLeaveQueue();
+    };
+    
     const requestNotificationPermission = async () => {
         if (!('Notification' in window)) {
             toast.error('Ваш браузер не поддерживает уведомления.');
@@ -56,6 +82,7 @@ function WaitPage() {
             title: 'Выход из очереди',
             message: <p>Вы уверены, что хотите покинуть очередь <strong>"{queueName}"</strong>?</p>,
             confirmText: 'Да, выйти',
+            isDestructive: true,
             onConfirm: async () => {
                 setIsLeaving(true);
                 const toastId = toast.loading('Выходим из очереди...');
@@ -110,7 +137,6 @@ function WaitPage() {
                  clearActiveSession();
                  setStatus('error');
                  setErrorMessage('Эта очередь была удалена администратором.');
-                 // Предполагая, что каналы названы так, чтобы их можно было найти
                  service.removeSubscription(`wait-page-members-${queueId}`);
                  service.removeSubscription(`wait-page-queue-${queueId}`);
                  return;
@@ -150,13 +176,10 @@ function WaitPage() {
 
     useEffect(() => {
         if (myInfo) {
-            // --- НАЧАЛО ИЗМЕНЕНИЙ: ЛОГИКА ТРИГГЕРА И СБРОСА ---
-
-            // Если вызвали и флаг еще не поднят
             if (myInfo.status === 'called' && !notificationTriggered.current) {
-                notificationTriggered.current = true; // Поднимаем флаг
+                notificationTriggered.current = true;
                 document.title = "ВАША ОЧЕРЕДЬ!";
-                if (audioPlayer.current) audioPlayer.current.play().catch(e => log(PAGE_SOURCE, 'Ошибка воспроизведения аудио', e));
+                audioPlayer.current?.play().catch(e => log(PAGE_SOURCE, 'Ошибка воспроизведения аудио', e));
                 if (notificationPermission === 'granted') {
                     new Notification('Ваша очередь подошла!', {
                         body: `Вас вызывают в очереди "${queueName}". Ваш код: ${myInfo.display_code}`,
@@ -166,14 +189,15 @@ function WaitPage() {
                 }
             }
 
-            // Если вернули в очередь и флаг был поднят
+            if (myInfo.status !== 'called') {
+                stopNotificationSound();
+            }
+
             if (myInfo.status === 'waiting' && notificationTriggered.current) {
-                notificationTriggered.current = false; // Сбрасываем флаг!
-                document.title = `Q-App - Ожидание в ${queueName || ''}`; // Возвращаем заголовок
+                notificationTriggered.current = false;
+                document.title = `Q-App - Ожидание в ${queueName || ''}`;
             }
             
-            // --- КОНЕЦ ИЗМЕНЕНИЙ ---
-
             if (myInfo.status === 'serviced') {
                 log(PAGE_SOURCE, 'Сессия завершена (serviced), очищаем localStorage.');
                 clearActiveSession();
@@ -187,17 +211,38 @@ function WaitPage() {
     return (
         <div className={`container ${styles.pageContainer}`}>
              <div className={waitCardClasses}>
-                <audio ref={audioPlayer} src="/notification.mp3" preload="auto" />
+                <audio ref={audioPlayer} src="/notification.mp3" preload="auto" loop />
                 <h2>Очередь: {queueName}</h2>
                 <hr className={styles.divider}/>
                 <p className={styles.greeting}>Здравствуйте, <strong>{myInfo?.member_name}</strong>!</p>
                 <h1 className={styles.displayCodeLabel}>Ваш код: <span className={styles.displayCode}>{myInfo?.display_code}</span></h1>
                 
                 {myInfo?.status === 'waiting' && (<><p className={styles.peopleAhead}>Перед вами: <strong>{peopleAhead}</strong> чел.</p><p className={styles.autoUpdateText}>Эта страница будет обновляться автоматически.</p></>)}
-                {myInfo?.status === 'called' && (<div className={`${styles.statusBox} ${styles.statusCalled}`}><h2>Вас вызывают!</h2></div>)}
+                
+                {myInfo?.status === 'called' && (
+                    <div className={`${styles.statusBox} ${styles.statusCalled}`}>
+                        <h2>Вас вызывают!</h2>
+                        <div className={styles.actionButtons}>
+                            {/* --- ИЗМЕНЕНИЕ: Кнопки поменялись местами --- */}
+                            <Button onClick={handleDeclineCall} className={styles.declineButton}>
+                                <X size={20} /> Отказаться
+                            </Button>
+                            <Button onClick={handleAcknowledgeCall} className={styles.acknowledgeButton}>
+                                <Check size={20} /> Я иду!
+                            </Button>
+                        </div>
+                    </div>
+                )}
+                
+                {myInfo?.status === 'acknowledged' && (
+                    <div className={`${styles.statusBox} ${styles.statusAcknowledged}`}>
+                        <h2>Администратор ожидает вас.</h2>
+                    </div>
+                )}
+
                 {myInfo?.status === 'serviced' && (<div className={`${styles.statusBox} ${styles.statusServiced}`}><h2>Ваше обслуживание завершено.</h2></div>)}
                 
-                {(myInfo?.status === 'waiting' || myInfo?.status === 'called') && (
+                {(myInfo?.status === 'waiting' || myInfo?.status === 'called' || myInfo.status === 'acknowledged') && (
                     <Button onClick={handleLeaveQueue} isLoading={isLeaving} className={styles.leaveButton}>
                         Выйти из очереди
                     </Button>
@@ -225,7 +270,7 @@ function WaitPage() {
                 </Card>
             )}
             
-            <ConfirmationModal isOpen={confirmation.isOpen} onClose={() => setConfirmation({ ...confirmation, isOpen: false })} onConfirm={confirmation.onConfirm} title={confirmation.title} confirmText={confirmation.confirmText}>
+            <ConfirmationModal isOpen={confirmation.isOpen} onClose={() => setConfirmation({ ...confirmation, isOpen: false })} onConfirm={confirmation.onConfirm} title={confirmation.title} confirmText={confirmation.confirmText} isDestructive={confirmation.isDestructive}>
                 {confirmation.message}
             </ConfirmationModal>
         </div>
