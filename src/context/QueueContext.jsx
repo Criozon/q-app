@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import QRCode from 'qrcode';
 import log from '../utils/logger';
@@ -18,15 +18,11 @@ export function QueueProvider({ children }) {
   const [qrCodeUrl, setQrCodeUrl] = useState('');
   const [joinUrl, setJoinUrl] = useState('');
 
-  const loadQueueData = useCallback(async () => {
-    // Не устанавливаем setLoading(true) здесь, чтобы избежать моргания
-    setError(null);
+  const loadQueueData = useCallback(async (isInitialLoad = false) => {
+    if (isInitialLoad) setError(null);
     try {
       const { data: qData, error: qError } = await service.getQueueBySecret(secretKey);
-      if (qError || !qData) {
-        if (qError) throw qError;
-        throw new Error("Очередь не найдена или была удалена.");
-      }
+      if (qError || !qData) throw new Error("Очередь не найдена или была удалена.");
       setQueue(qData);
 
       const [membersRes, windowsRes, servicesRes] = await Promise.all([
@@ -37,71 +33,64 @@ export function QueueProvider({ children }) {
 
       if (membersRes.error) throw new Error("Не удалось загрузить участников.");
       setMembers(membersRes.data || []);
-
       if (windowsRes.error) throw new Error("Не удалось загрузить данные об окнах.");
       setWindows(windowsRes.data || []);
-      
       if (servicesRes.error) throw new Error("Не удалось загрузить список услуг.");
       setServices(servicesRes.data || []);
 
-      const currentJoinUrl = `${window.location.origin}/join/${qData.id}`;
-      setJoinUrl(currentJoinUrl);
-      const qrUrl = await QRCode.toDataURL(currentJoinUrl);
-      setQrCodeUrl(qrUrl);
-
+      if (!joinUrl) {
+          const currentJoinUrl = `${window.location.origin}/join/${qData.id}`;
+          setJoinUrl(currentJoinUrl);
+          const qrUrl = await QRCode.toDataURL(currentJoinUrl);
+          setQrCodeUrl(qrUrl);
+      }
     } catch (err) {
       log(PAGE_SOURCE, 'Ошибка при загрузке:', err);
-      setError(err.message || 'Произошла неизвестная ошибка');
-      setQueue(null);
+      if (isInitialLoad) {
+        setError(err.message || 'Произошла неизвестная ошибка');
+        setQueue(null);
+      }
     } finally {
-      setLoading(false); // Устанавливаем в false только после первой загрузки
+      if (isInitialLoad) setLoading(false);
     }
-  }, [secretKey]);
+  }, [secretKey, joinUrl]);
 
   useEffect(() => {
-    setLoading(true);
-    loadQueueData();
+    loadQueueData(true);
   }, [loadQueueData]);
   
   useEffect(() => {
     if (!queue) return;
-
-    // --- НАЧАЛО ИСПРАВЛЕНИЯ: Умный обработчик Realtime ---
     const handleRealtimeUpdate = (payload) => {
-      log(PAGE_SOURCE, `Realtime (${payload.table}): ${payload.eventType}`);
-      setMembers(currentMembers => {
-        const memberMap = new Map(currentMembers.map(m => [m.id, m]));
-        
-        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-          // Обновляем или добавляем участника в Map, чтобы избежать дубликатов
-          memberMap.set(payload.new.id, payload.new);
-        } else if (payload.eventType === 'DELETE') {
-          memberMap.delete(payload.old.id);
-        }
-        
-        const newMembers = Array.from(memberMap.values());
-        return newMembers.sort((a, b) => a.ticket_number - b.ticket_number);
-      });
+      log(PAGE_SOURCE, `Realtime (${payload.table}): ${payload.eventType}, перезагружаем данные.`);
+      loadQueueData(false);
     };
-    // --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
     const memberChannel = service.subscribe(`context-admin-members-${queue.id}`, { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queue.id}` }, handleRealtimeUpdate);
-    // Остальные подписки могут перезагружать всю страницу, если нужно
-    const queueChannel = service.subscribe(`context-admin-queue-${queue.id}`, { event: 'UPDATE', schema: 'public', table: 'queues', filter: `id=eq.${queue.id}` }, loadQueueData);
-    const serviceChannel = service.subscribe(`context-admin-services-${queue.id}`, { event: '*', schema: 'public', table: 'services', filter: `queue_id=eq.${queue.id}` }, loadQueueData);
-    const windowServiceChannel = service.subscribe(`context-admin-window-services-${queue.id}`, { event: '*', schema: 'public', table: 'window_services' }, loadQueueData);
+    // Исправлено: отдельная подписка для других таблиц
+    const otherTablesChannel = service.subscribe(`context-admin-other-${queue.id}`, { event: '*', schema: 'public', table: 'queues,services,window_services' }, handleRealtimeUpdate);
 
     return () => {
       service.removeSubscription(memberChannel);
-      service.removeSubscription(queueChannel);
-      service.removeSubscription(serviceChannel);
-      service.removeSubscription(windowServiceChannel);
+      service.removeSubscription(otherTablesChannel);
     };
   }, [queue, loadQueueData]);
 
-  const waitingMembersCount = members.filter(m => m.status === 'waiting').length;
+  const waitingMembersCount = useMemo(() => members.filter(m => m.status === 'waiting').length, [members]);
 
-  const value = { queue, members, windows, services, loading, error, qrCodeUrl, joinUrl, waitingMembersCount, setQueue, loadQueueData };
+  const value = useMemo(() => ({
+    queue,
+    members,
+    windows,
+    services,
+    loading,
+    error,
+    qrCodeUrl,
+    joinUrl,
+    waitingMembersCount,
+    setQueue,
+    loadQueueData
+  }), [queue, members, windows, services, loading, error, qrCodeUrl, joinUrl, waitingMembersCount, loadQueueData]);
 
   return (
     <QueueContext.Provider value={value}>

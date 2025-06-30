@@ -9,7 +9,9 @@ import Card from '../components/Card';
 import styles from './WaitPage.module.css';
 import log from '../utils/logger';
 import * as service from '../services/supabaseService';
+// --- НАЧАЛО ИЗМЕНЕНИЙ: Удаляем импорт несуществующего хука ---
 import { clearActiveSession } from '../utils/session';
+// --- КОНЕЦ ИЗМЕНЕНИЙ ---
 
 const PAGE_SOURCE = 'WaitPage';
 
@@ -106,7 +108,6 @@ function WaitPage() {
     const checkMyStatus = async () => {
         log(PAGE_SOURCE, 'Проверка статуса...');
         try {
-            // --- ИЗМЕНЕНИЕ: Убеждаемся, что вызывается правильная функция из сервиса ---
             const { data, error } = await service.getMemberById(memberId);
             if (!data && error) {
                  const { data: queueData } = await service.getQueueById(queueId);
@@ -220,7 +221,6 @@ function WaitPage() {
                 <hr className={styles.divider}/>
                 <p className={styles.greeting}>Здравствуйте, <strong>{myInfo?.member_name}</strong>!</p>
 
-                {/* --- ИЗМЕНЕНИЕ: Эта строка теперь будет работать правильно --- */}
                 {myInfo?.services?.name && (
                     <p className={styles.serviceName}>Услуга: <strong>{myInfo.services.name}</strong></p>
                 )}

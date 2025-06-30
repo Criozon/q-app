@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Trash2, Plus } from 'lucide-react';
@@ -13,10 +13,11 @@ import Input from '../components/Input';
 import NumberStepper from '../components/NumberStepper';
 import ServiceRow from '../components/ServiceRow';
 import log from '../utils/logger';
+// --- НАЧАЛО ИЗМЕНЕНИЯ: ИСПРАВЛЕНА ОШИБКА В ИМПОРТЕ ---
 import * as service from '../services/supabaseService';
+// --- КОНЕЦ ИЗМЕНЕНИЯ ---
 import { useMyQueues } from '../hooks/useMyQueues';
-import { useCheckActiveSession } from '../hooks/useCheckActiveSession';
-import { clearActiveSession } from '../utils/session';
+import { getActiveSession, clearActiveSession } from '../utils/session';
 
 function HomePage() {
   const [queueName, setQueueName] = useState('');
@@ -26,7 +27,8 @@ function HomePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [myQueues, setMyQueues] = useMyQueues();
   const navigate = useNavigate();
-  const sessionInfo = useCheckActiveSession();
+  
+  const lastServiceInputRef = useRef(null);
 
   const [confirmation, setConfirmation] = useState({
       isOpen: false,
@@ -40,54 +42,49 @@ function HomePage() {
   });
 
   useEffect(() => {
-    if (sessionInfo.status === 'valid' && sessionInfo.session) {
-      const { session, queueName } = sessionInfo;
-      setConfirmation({
-        isOpen: true,
-        title: "Обнаружена активная сессия",
-        message: <p>Вы уже находитесь в очереди <strong>"{queueName}"</strong>. Хотите вернуться или выйти?</p>,
-        confirmText: "Да, вернуться",
-        cancelText: "Нет, выйти",
-        isDestructive: false,
-        onConfirm: () => {
-          const path = session.windowSecretKey 
-              ? `/window-admin/${session.windowSecretKey}` 
-              : `/wait/${session.queueId}/${session.memberId}`;
-          navigate(path);
-        },
-        onCancelAction: async () => {
-          const toastId = toast.loading('Выходим из очереди...');
-          const { error: deleteError } = await service.deleteMember(session.memberId);
-          toast.dismiss(toastId);
-          if (deleteError) {
-            toast.error('Не удалось выйти из очереди.');
-          } else {
-            clearActiveSession();
-            toast.success('Вы успешно вышли из очереди.');
-          }
+    const checkSession = async () => {
+      const session = getActiveSession();
+      if (session) {
+        const { data: memberData } = await service.getMemberById(session.memberId);
+        
+        if (memberData && ['waiting', 'called', 'acknowledged'].includes(memberData.status)) {
+          setConfirmation({
+            isOpen: true,
+            title: "Обнаружена активная сессия",
+            message: <p>Вы уже находитесь в очереди <strong>"{memberData.queues.name}"</strong>. Вы можете вернуться к ней или проигнорировать и продолжить работу здесь.</p>,
+            confirmText: "Вернуться к сессии",
+            cancelText: "Продолжить здесь",
+            isDestructive: false,
+            onConfirm: () => {
+              const path = memberData.windows?.admin_secret_key
+                  ? `/window-admin/${memberData.windows.admin_secret_key}`
+                  : `/wait/${session.queueId}/${session.memberId}`;
+              navigate(path);
+            },
+            onCancelAction: () => {
+              setConfirmation({ isOpen: false });
+            }
+          });
+        } else {
+          clearActiveSession();
         }
-      });
-    }
-  }, [sessionInfo, navigate]);
+      }
+    };
 
-  useEffect(() => {
-      setServices(currentServices => 
-          currentServices.map(s => ({
-              ...s,
-              window_indices: s.window_indices.filter(idx => idx <= windowCount)
-          }))
-      );
-  }, [windowCount]);
+    checkSession();
+  }, [navigate]);
 
   const handleAddService = () => {
-    setServices([...services, { id: uuidv4(), name: '', window_indices: [] }]);
+    setServices(prevServices => [...prevServices, { id: uuidv4(), name: '', window_indices: [] }]);
+    setTimeout(() => {
+        lastServiceInputRef.current?.focus();
+    }, 0);
   };
 
   const handleRemoveService = (idToRemove) => {
     if (services.length > 1) {
       setServices(services.filter(s => s.id !== idToRemove));
     } else {
-      // Если это последняя услуга, просто очищаем ее, а не удаляем строку
       setServices([{ id: uuidv4(), name: '', window_indices: [] }]);
     }
   };
@@ -129,7 +126,6 @@ function HomePage() {
       const newQueue = data;
       setMyQueues([newQueue, ...myQueues]);
       
-      // --- ИЗМЕНЕНИЕ ЗДЕСЬ: Добавляем state при навигации ---
       navigate(`/admin/${newQueue.admin_secret_key}`, { state: { fromCreation: true } });
 
     } catch (error) {
@@ -183,20 +179,21 @@ function HomePage() {
       <Card>
         <div className={styles.form}>
             <Input 
-              placeholder="Название вашей очереди (обязательно)"
+              placeholder="Название очереди (обязательно)"
               value={queueName}
               onChange={(e) => setQueueName(e.target.value)}
               onKeyPress={handleKeyPress}
+              className={styles.leftAlignInput}
             />
             <textarea
               className={styles.textarea}
-              placeholder="Описание или условия (необязательно)"
+              placeholder="Краткое описание (необязательно)"
               value={queueDescription}
               onChange={(e) => setQueueDescription(e.target.value)}
               rows="3"
             />
             <div className={styles.formRow}>
-              <label className={styles.formLabel}>Количество окон/кабинетов</label>
+              <label className={styles.formLabel}>Количество окон</label>
               <NumberStepper 
                 value={windowCount}
                 onChange={setWindowCount}
@@ -210,13 +207,15 @@ function HomePage() {
                 Добавьте услуги для разделения потоков (необязательно). Если не выбрать окна, услуга будет доступна во всех.
               </p>
               <div className={styles.serviceRowsContainer}>
-                  {services.map((service) => (
+                  {services.map((service, index) => (
                     <ServiceRow 
                       key={service.id}
                       service={service}
                       onUpdate={handleUpdateService}
                       onRemove={() => handleRemoveService(service.id)}
                       windowCount={windowCount}
+                      ref={index === services.length - 1 ? lastServiceInputRef : null}
+                      className={styles.leftAlignInput}
                     />
                   ))}
               </div>

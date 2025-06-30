@@ -1,23 +1,28 @@
 import React from 'react';
-import styles from './Input.module.css'; // 1. Импортируем CSS-модуль
+import styles from './Input.module.css';
 
-function Input({ value, onChange, placeholder, type = 'text', onKeyPress, style }) {
-  // 2. Убираем стейт `isFocused` и все объекты стилей (style, focus, inputStyle).
-  // Логика фокуса теперь полностью в CSS-файле.
+// --- НАЧАЛО ИЗМЕНЕНИЙ: Полностью переработанный компонент ---
+const Input = React.forwardRef(({ value, onChange, placeholder, type = 'text', onKeyPress, style, className }, ref) => {
+  
+  // Объединяем внутренний класс компонента с внешним, если он передан
+  const combinedClassName = [
+    styles.input, // Наш базовый стиль
+    className     // Внешний стиль (например, для выравнивания)
+  ].filter(Boolean).join(' '); // .filter(Boolean) уберет null/undefined, если className не передан
 
   return (
     <input
-      // 3. Используем `className` вместо `style`
-      className={styles.input}
+      className={combinedClassName} // Применяем объединенные классы
       type={type}
       value={value}
       onChange={onChange}
       placeholder={placeholder}
-      // 4. Убираем onFocus и onBlur, они больше не нужны для стилизации
       onKeyPress={onKeyPress}
-      style={style} // Добавляем проброс style для кастомизации
+      style={style}
+      ref={ref} 
     />
   );
-}
+});
+// --- КОНЕЦ ИЗМЕНЕНИЙ ---
 
 export default Input;

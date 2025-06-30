@@ -3,7 +3,9 @@ import { Trash2 } from 'lucide-react';
 import styles from './ServiceRow.module.css';
 import Input from './Input';
 
-function ServiceRow({ service, onUpdate, onRemove, windowCount }) {
+// --- НАЧАЛО ИЗМЕНЕНИЙ: Упрощаем проброс пропсов ---
+// Меняем 'inputClassName' на просто 'className' для единообразия
+const ServiceRow = React.forwardRef(({ service, onUpdate, onRemove, windowCount, className }, ref) => {
 
   const handleNameChange = (e) => {
     onUpdate({ ...service, name: e.target.value });
@@ -26,13 +28,26 @@ function ServiceRow({ service, onUpdate, onRemove, windowCount }) {
 
   return (
     <div className={styles.row}>
-      <div className={styles.inputWrapper}>
-        <Input 
-          placeholder="Название услуги"
-          value={service.name}
-          onChange={handleNameChange}
-        />
+      <div className={styles.topRow}>
+        <div className={styles.inputWrapper}>
+          <Input 
+            placeholder="Название услуги"
+            value={service.name}
+            onChange={handleNameChange}
+            ref={ref} 
+            // Передаем полученный класс напрямую в Input
+            className={className}
+          />
+        </div>
+        <button 
+          className={styles.removeButton} 
+          onClick={onRemove}
+          title="Удалить услугу"
+        >
+          <Trash2 size={18} />
+        </button>
       </div>
+      
       <div className={styles.windowSelector}>
         {windowOptions.map(index => (
           <button 
@@ -45,15 +60,9 @@ function ServiceRow({ service, onUpdate, onRemove, windowCount }) {
           </button>
         ))}
       </div>
-      <button 
-        className={styles.removeButton} 
-        onClick={onRemove}
-        title="Удалить услугу"
-      >
-        <Trash2 size={18} />
-      </button>
     </div>
   );
-}
+});
+// --- КОНЕЦ ИЗМЕНЕНИЙ ---
 
 export default ServiceRow;

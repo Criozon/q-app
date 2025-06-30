@@ -1,15 +1,25 @@
+/* --- НАЧАЛО ИЗМЕНЕНИЙ: Полностью переработанные стили --- */
+
+/* Главный контейнер, теперь он вертикальный */
 .row {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column; /* Вертикальное расположение */
+  gap: 8px; /* Отступ между верхней строкой и блоком с окнами */
   background-color: var(--background);
   padding: 8px;
   border-radius: 8px;
   border: 1px solid var(--border-color);
 }
 
+/* Новая обертка для поля ввода и кнопки удаления */
+.topRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .inputWrapper {
-  flex-grow: 1;
+  flex-grow: 1; /* Поле ввода занимает все доступное место */
 }
 
 .inputWrapper input {
@@ -18,14 +28,15 @@
   background-color: white !important;
 }
 
+/* Блок с кружками-номерами окон */
 .windowSelector {
   display: flex;
+  flex-wrap: wrap; /* Главное свойство: переносит элементы на новую строку */
   gap: 6px;
-  flex-shrink: 0;
-  flex-wrap: wrap; /* Для переноса на маленьких экранах */
-  justify-content: flex-end;
+  padding-top: 4px; /* Небольшой отступ сверху */
 }
 
+/* Стили для одного кружка-номера окна */
 .windowChip {
   width: 32px;
   height: 32px;
@@ -49,6 +60,7 @@
   font-weight: 600;
 }
 
+/* Кнопка удаления (стили почти не изменились) */
 .removeButton {
   background: none;
   border: none;
@@ -64,3 +76,5 @@
   background-color: #fcebeb;
   color: var(--accent-red);
 }
+
+/* --- КОНЕЦ ИЗМЕНЕНИЙ --- */

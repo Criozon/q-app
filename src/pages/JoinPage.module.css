@@ -73,7 +73,9 @@
 .sectionTitle {
   font-size: 16px;
   font-weight: 600;
-  margin: 0;
+  /* --- НАЧАЛО ИЗМЕНЕНИЯ: Добавляем отступ снизу --- */
+  margin: 0 0 12px 0;
+  /* --- КОНЕЦ ИЗМЕНЕНИЯ --- */
   color: var(--text-secondary);
 }
 
@@ -102,11 +104,9 @@
   background-color: #e3f2fd;
 }
 
-/* --- НАЧАЛО ИЗМЕНЕНИЯ: ОБНОВЛЕННЫЙ СТИЛЬ ДЛЯ ВЫБРАННОЙ КНОПКИ --- */
 .serviceButton.selected {
-  background-color: #e3f2fd; /* Светло-голубой фон */
-  color: var(--accent-blue);   /* Синий текст */
-  border-color: var(--accent-blue); /* Синяя рамка */
+  background-color: #e3f2fd;
+  color: var(--accent-blue);
+  border-color: var(--accent-blue);
   font-weight: 600;
 }
-/* --- КОНЕЦ ИЗМЕНЕНИЯ --- */

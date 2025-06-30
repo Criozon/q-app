@@ -26,6 +26,14 @@
   gap: 16px;
 }
 
+/* --- НАЧАЛО ИЗМЕНЕНИЯ: Новый класс для выравнивания --- */
+.leftAlignInput {
+  /* !important нужен, чтобы перебить базовый стиль .input { text-align: center; } */
+  text-align: left !important; 
+}
+/* --- КОНЕЦ ИЗМЕНЕНИЯ --- */
+
+
 .textarea {
   width: 100%;
   padding: 12px;

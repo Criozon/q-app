@@ -29,28 +29,36 @@ function JoinPage() {
             setIsLoading(true);
             setError('');
             try {
-                // --- ИЗМЕНЕНИЕ: Используем ОДНУ безопасную функцию вместо двух ---
-                // Эта функция вызовет наш новый RPC в Supabase, который обойдет RLS
                 const { data: pageData, error: pageError } = await service.getQueueDetailsForJoining(queueId);
 
                 if (pageError || !pageData || !pageData.queue) {
                     throw new Error('Очередь не найдена или была удалена.');
                 }
                 
-                // Раскладываем полученные данные по состояниям
                 setQueue(pageData.queue);
-                setServices(pageData.services || []); // Теперь здесь будут данные!
+                setServices(pageData.services || []);
 
-                // Проверка активной сессии (логика осталась прежней)
+                // --- НАЧАЛО ИЗМЕНЕНИЙ: БОЛЕЕ НАДЕЖНАЯ ПРОВЕРКА СЕССИИ ---
                 const session = getActiveSession();
-                if (session && session.queueId === queueId) {
-                    const { data: memberData, error: memberError } = await service.getMemberById(session.memberId);
-                    if (memberData && !memberError && ['waiting', 'called', 'acknowledged'].includes(memberData.status)) {
-                        setCurrentActiveSession(session);
+                if (session) {
+                    // Если сессия есть, всегда проверяем её валидность
+                    const { data: memberData } = await service.getMemberById(session.memberId);
+                    
+                    // Сессия валидна, если участник существует и всё ещё в очереди
+                    if (memberData && ['waiting', 'called', 'acknowledged'].includes(memberData.status)) {
+                        // Если валидная сессия относится к ТЕКУЩЕЙ очереди, показываем модальное окно
+                        if (session.queueId === queueId) {
+                            setCurrentActiveSession(session);
+                        }
+                        // Если валидная сессия относится к ДРУГОЙ очереди, мы ее просто игнорируем,
+                        // позволяя пользователю вступить в новую.
                     } else {
+                        // Если участник не найден или его статус 'serviced', сессия устарела. Удаляем!
                         clearActiveSession();
                     }
                 }
+                // --- КОНЕЦ ИЗМЕНЕНИЙ ---
+
             } catch (err) { 
                 setError(err.message); 
             } finally { 
@@ -60,7 +68,6 @@ function JoinPage() {
         loadPageData();
     }, [queueId]);
 
-    // Подписка на обновления статуса очереди (без изменений)
     useEffect(() => {
         if (!queueId) return;
         const channel = service.subscribe(`join-page-queue-status-${queueId}`, {
@@ -73,13 +80,11 @@ function JoinPage() {
     }, [queueId]);
 
     const handleJoinQueue = async () => {
-        // Проверка имени
         if (!memberName.trim()) {
             toast.error('Пожалуйста, введите ваше имя.');
             return;
         }
         
-        // Ключевая проверка, которая теперь будет работать корректно
         if (services.length > 0 && !selectedServiceId) {
             toast.error('Пожалуйста, выберите услугу.');
             return;
@@ -98,7 +103,7 @@ function JoinPage() {
                 queue_id: queueId,
                 member_name: memberName.trim(),
                 display_code: displayCode,
-                service_id: selectedServiceId // Будет null, если услуг нет, или ID услуги
+                service_id: selectedServiceId
             };
             
             const { data, error } = await service.createMember(memberData);
@@ -122,7 +127,6 @@ function JoinPage() {
         }
     };
     
-    // Логика для активной сессии (без изменений)
     const handleReturnToWaitPage = () => {
         navigate(`/wait/${currentActiveSession.queueId}/${currentActiveSession.memberId}`);
     };
@@ -166,7 +170,6 @@ function JoinPage() {
         )
     }
 
-    // Логика для кнопки "Встать в очередь", теперь она будет работать как надо
     const canJoin = !isJoining && memberName.trim() && (services.length === 0 || !!selectedServiceId);
 
     return (
