@@ -8,6 +8,7 @@
   box-sizing: border-box;
   outline: none;
   transition: border-color 0.2s;
+  text-align: center; /* --- ИЗМЕНЕНИЕ: Центрируем текст --- */
 }
 
 /* Стили при фокусе */

@@ -1,12 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Plus } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
+
 import styles from './HomePage.module.css';
 import Section from '../components/Section';
 import Card from '../components/Card';
 import ConfirmationModal from '../components/ConfirmationModal';
 import Button from '../components/Button';
+import Input from '../components/Input';
+import NumberStepper from '../components/NumberStepper';
+import ServiceRow from '../components/ServiceRow';
 import log from '../utils/logger';
 import * as service from '../services/supabaseService';
 import { useMyQueues } from '../hooks/useMyQueues';
@@ -16,6 +21,8 @@ import { clearActiveSession } from '../utils/session';
 function HomePage() {
   const [queueName, setQueueName] = useState('');
   const [queueDescription, setQueueDescription] = useState('');
+  const [windowCount, setWindowCount] = useState(1);
+  const [services, setServices] = useState([{ id: uuidv4(), name: '', window_indices: [] }]);
   const [isLoading, setIsLoading] = useState(false);
   const [myQueues, setMyQueues] = useMyQueues();
   const navigate = useNavigate();
@@ -29,28 +36,29 @@ function HomePage() {
       onCancelAction: () => {},
       confirmText: 'Подтвердить',
       cancelText: 'Отмена',
-      isDestructive: false, // Добавляем свойство в состояние
+      isDestructive: false,
   });
 
   useEffect(() => {
     if (sessionInfo.status === 'valid' && sessionInfo.session) {
       const { session, queueName } = sessionInfo;
-      
       setConfirmation({
         isOpen: true,
         title: "Обнаружена активная сессия",
         message: <p>Вы уже находитесь в очереди <strong>"{queueName}"</strong>. Хотите вернуться или выйти?</p>,
         confirmText: "Да, вернуться",
         cancelText: "Нет, выйти",
-        isDestructive: false, // Указываем, что это НЕ разрушительное действие
+        isDestructive: false,
         onConfirm: () => {
-          navigate(`/wait/${session.queueId}/${session.memberId}`);
+          const path = session.windowSecretKey 
+              ? `/window-admin/${session.windowSecretKey}` 
+              : `/wait/${session.queueId}/${session.memberId}`;
+          navigate(path);
         },
         onCancelAction: async () => {
           const toastId = toast.loading('Выходим из очереди...');
           const { error: deleteError } = await service.deleteMember(session.memberId);
           toast.dismiss(toastId);
-
           if (deleteError) {
             toast.error('Не удалось выйти из очереди.');
           } else {
@@ -62,43 +70,71 @@ function HomePage() {
     }
   }, [sessionInfo, navigate]);
 
+  useEffect(() => {
+      setServices(currentServices => 
+          currentServices.map(s => ({
+              ...s,
+              window_indices: s.window_indices.filter(idx => idx <= windowCount)
+          }))
+      );
+  }, [windowCount]);
+
+  const handleAddService = () => {
+    setServices([...services, { id: uuidv4(), name: '', window_indices: [] }]);
+  };
+
+  const handleRemoveService = (idToRemove) => {
+    if (services.length > 1) {
+      setServices(services.filter(s => s.id !== idToRemove));
+    } else {
+      // Если это последняя услуга, просто очищаем ее, а не удаляем строку
+      setServices([{ id: uuidv4(), name: '', window_indices: [] }]);
+    }
+  };
+
+  const handleUpdateService = (updatedService) => {
+    setServices(services.map(s => s.id === updatedService.id ? updatedService : s));
+  };
+
   const handleCreateQueue = async () => {
     if (!queueName.trim()) {
       toast.error('Пожалуйста, введите название очереди.');
       return;
     }
-    setIsLoading(true);
-    const toastId = toast.loading('Создаем очередь... Это может занять до 30 секунд при первом запуске.');
 
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Timeout")), 25000)
-    );
+    const validServices = services
+        .filter(s => s.name.trim() !== '')
+        .map(s => {
+            const windowIndices = s.window_indices.length > 0 ? s.window_indices : Array.from({ length: windowCount }, (_, i) => i + 1);
+            return {
+                name: s.name.trim(),
+                window_indices: windowIndices
+            }
+        });
+    
+    setIsLoading(true);
+    const toastId = toast.loading('Создаем очередь...');
 
     try {
-      const { data, error } = await Promise.race([
-          service.createQueue({ name: queueName, description: queueDescription }),
-          timeoutPromise
-      ]);
-
+      const { data, error } = await service.createQueue({
+          name: queueName,
+          description: queueDescription,
+          window_count: windowCount,
+          services_payload: validServices
+      });
+      
       if (error) throw error;
       
-      toast.success('Очередь создана!', { id: toastId });
-
-      const newQueue = { 
-        id: data.id, 
-        name: data.name, 
-        admin_secret_key: data.admin_secret_key 
-      };
+      toast.success('Очередь успешно создана!', { id: toastId });
+      const newQueue = data;
       setMyQueues([newQueue, ...myQueues]);
       
-      navigate(`/admin/${data.admin_secret_key}`, { state: { fromCreation: true } });
+      // --- ИЗМЕНЕНИЕ ЗДЕСЬ: Добавляем state при навигации ---
+      navigate(`/admin/${newQueue.admin_secret_key}`, { state: { fromCreation: true } });
 
     } catch (error) {
-      if (error.message === "Timeout") {
-        toast.error('Сервер отвечает слишком долго. Попробуйте, пожалуйста, еще раз.', { id: toastId, duration: 6000 });
-      } else {
+        log('HomePage', 'Ошибка при создании очереди:', error);
         toast.error('Не удалось создать очередь.', { id: toastId });
-      }
     } finally {
       setIsLoading(false);
     }
@@ -111,7 +147,7 @@ function HomePage() {
           message: <p>Вы уверены, что хотите удалить очередь <strong>"{queueToDelete.name}"</strong>? Это действие необратимо.</p>,
           confirmText: 'Да, удалить',
           cancelText: 'Отмена',
-          isDestructive: true, // Указываем, что это РАЗРУШИТЕЛЬНОЕ действие
+          isDestructive: true,
           onConfirm: () => {
               const originalQueues = [...myQueues];
               const updatedQueues = myQueues.filter(q => q.id !== queueToDelete.id);
@@ -135,7 +171,7 @@ function HomePage() {
   };
 
   const handleKeyPress = (event) => {
-    if (event.key === 'Enter') handleCreateQueue();
+    if (event.key === 'Enter' && !isLoading) handleCreateQueue();
   };
 
   return (
@@ -144,28 +180,57 @@ function HomePage() {
         <h1 className={styles.title}>Q-App</h1>
         <p className={styles.subtitle}>Создайте электронную очередь для любого события за 10 секунд.</p>
       </div>
-      <div className={styles.creationCard}>
+      <Card>
         <div className={styles.form}>
-          <input 
-            className={styles.input}
-            placeholder="Название вашей очереди (обязательно)"
-            value={queueName}
-            onChange={(e) => setQueueName(e.target.value)}
-            onKeyPress={handleKeyPress}
-          />
-          <textarea
-            className={styles.textarea}
-            placeholder="Описание или условия (необязательно)"
-            value={queueDescription}
-            onChange={(e) => setQueueDescription(e.target.value)}
-            rows="3"
-          />
-          <Button onClick={handleCreateQueue} isLoading={isLoading} disabled={!queueName.trim()}>
-            Создать очередь
-          </Button>
+            <Input 
+              placeholder="Название вашей очереди (обязательно)"
+              value={queueName}
+              onChange={(e) => setQueueName(e.target.value)}
+              onKeyPress={handleKeyPress}
+            />
+            <textarea
+              className={styles.textarea}
+              placeholder="Описание или условия (необязательно)"
+              value={queueDescription}
+              onChange={(e) => setQueueDescription(e.target.value)}
+              rows="3"
+            />
+            <div className={styles.formRow}>
+              <label className={styles.formLabel}>Количество окон/кабинетов</label>
+              <NumberStepper 
+                value={windowCount}
+                onChange={setWindowCount}
+                min={1}
+                max={20}
+              />
+            </div>
+            
+            <div className={styles.serviceSection}>
+              <p className={styles.serviceHelpText}>
+                Добавьте услуги для разделения потоков (необязательно). Если не выбрать окна, услуга будет доступна во всех.
+              </p>
+              <div className={styles.serviceRowsContainer}>
+                  {services.map((service) => (
+                    <ServiceRow 
+                      key={service.id}
+                      service={service}
+                      onUpdate={handleUpdateService}
+                      onRemove={() => handleRemoveService(service.id)}
+                      windowCount={windowCount}
+                    />
+                  ))}
+              </div>
+              <Button onClick={handleAddService} className={styles.addButton}>
+                <Plus size={18} /> Добавить услугу
+              </Button>
+            </div>
+
+            <Button onClick={handleCreateQueue} isLoading={isLoading} disabled={!queueName.trim()} className={styles.createButton}>
+              Создать очередь
+            </Button>
         </div>
-      </div>
-      <p className={styles.footerText}>Бесплатно. Без регистрации. Просто.</p>
+      </Card>
+      
       {myQueues.length > 0 && (
         <Section title="Мои очереди">
           <div className={styles.myQueuesList}>
@@ -195,7 +260,7 @@ function HomePage() {
           confirmText={confirmation.confirmText}
           cancelText={confirmation.cancelText}
           isDestructive={confirmation.isDestructive}
-          >
+      >
           {confirmation.message}
       </ConfirmationModal>
     </div>

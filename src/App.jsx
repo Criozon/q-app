@@ -6,7 +6,10 @@ import AdminPage from './pages/AdminPage';
 import JoinPage from './pages/JoinPage';
 import WaitPage from './pages/WaitPage';
 import PrintPage from './pages/PrintPage';
-import { QueueProvider } from './context/QueueContext'; // 1. Импортируем провайдер
+import WindowAdminPage from './pages/WindowAdminPage'; // НОВЫЙ ИМПОРТ
+
+import { QueueProvider } from './context/QueueContext';
+import { WindowAdminProvider } from './context/WindowAdminContext'; // НОВЫЙ ИМПОРТ
 
 import './App.css'; 
 
@@ -17,8 +20,13 @@ function App() {
 
       <Router>
         <Routes>
+          {/* Маршруты для клиента */}
           <Route path="/" element={<HomePage />} />
-          {/* 2. Оборачиваем AdminPage в QueueProvider */}
+          <Route path="/join/:queueId" element={<JoinPage />} />
+          <Route path="/wait/:queueId/:memberId" element={<WaitPage />} />
+          <Route path="/print/:queueId" element={<PrintPage />} />
+          
+          {/* Маршрут для Мастер-Администратора */}
           <Route 
             path="/admin/:secretKey" 
             element={
@@ -27,9 +35,16 @@ function App() {
               </QueueProvider>
             } 
           />
-          <Route path="/join/:queueId" element={<JoinPage />} />
-          <Route path="/wait/:queueId/:memberId" element={<WaitPage />} />
-          <Route path="/print/:queueId" element={<PrintPage />} />
+
+          {/* НОВЫЙ МАРШРУТ для Администратора Окна */}
+          <Route
+            path="/window-admin/:windowSecretKey"
+            element={
+              <WindowAdminProvider>
+                <WindowAdminPage />
+              </WindowAdminProvider>
+            }
+          />
         </Routes>
       </Router>
     </>

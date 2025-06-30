@@ -1,0 +1,39 @@
+.stepperContainer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.button {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background-color: #e5e5e5;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+.button:hover:not(:disabled) {
+  background-color: #d1d1d6;
+}
+
+.button:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.value {
+  font-size: 20px;
+  font-weight: 600;
+  min-width: 30px; /* Чтобы контейнер не "прыгал" при смене 9 -> 10 */
+  text-align: center;
+}

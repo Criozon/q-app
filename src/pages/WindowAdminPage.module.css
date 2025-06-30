@@ -1,0 +1,297 @@
+.pageWrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: var(--background);
+}
+
+.header {
+  padding: 12px 0;
+  background-color: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+}
+
+.headerContent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.headerCenter {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+.headerTitle {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.queueCount {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.headerPlaceholder, .headerActions {
+    width: 44px;
+}
+
+.headerActions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.controlButton {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  height: 44px;
+  width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+}
+
+.controlButton:hover {
+    background-color: #f0f2f5;
+}
+
+.statusIndicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--accent-green);
+}
+
+.statusIndicatorPaused {
+  background-color: #ff9500;
+}
+
+.mainScrollWrapper {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.mainContent {
+  padding-top: 16px;
+  padding-bottom: 120px; 
+}
+
+.memberList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.memberCard {
+  padding: 12px 16px !important; 
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: all 0.3s ease;
+  border-left: 4px solid transparent;
+}
+
+.called {
+  border-left-color: var(--accent-green);
+}
+
+.acknowledged {
+  border-left-color: var(--accent-blue);
+  background-color: #e3f2fd;
+}
+
+.assignedMemberCard {
+    margin-bottom: 24px;
+}
+
+.serviced {
+  opacity: 0.4;
+}
+
+.assignedToOther {
+    opacity: 0.6;
+    background-color: #f0f2f5;
+}
+
+.memberInfo p {
+  margin: 0;
+}
+
+.memberName {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.memberService {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--accent-blue);
+    margin-top: 4px !important;
+}
+
+.serviced .memberName {
+  text-decoration: line-through;
+}
+
+.memberStatus {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.memberActions {
+  display: flex;
+  gap: 8px;
+}
+
+.actionButton {
+  padding: 8px !important; 
+  width: auto !important;   
+}
+
+.callButton {
+  background-color: #6e6e73 !important;
+  transition: background-color 0.2s;
+}
+
+.callButton:hover:not(:disabled) {
+  background-color: var(--accent-green) !important;
+}
+
+.removeButton {
+    background-color: #e5e5e5 !important;
+    color: var(--text-primary) !important;
+}
+
+.removeButton:hover:not(:disabled) {
+    background-color: #d1d1d6 !important;
+    color: var(--accent-red) !important;
+}
+
+.emptyState {
+    text-align: center;
+    padding: 60px 20px;
+    background-color: var(--card-background);
+    border-radius: 16px;
+    margin-top: 20px;
+    /* --- ИЗМЕНЕНИЕ: Добавляем flex-контейнер для центрирования кнопки --- */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.emptyStateIcon {
+    color: var(--border-color);
+}
+
+.emptyStateTitle {
+    font-size: 22px;
+    margin: 16px 0 8px 0;
+}
+
+.emptyStateText {
+    color: var(--text-secondary);
+    max-width: 300px;
+    margin: 0 auto 24px auto; /* --- ИЗМЕНЕНИЕ: Добавлен нижний отступ --- */
+}
+
+/* --- ИЗМЕНЕНИЕ: Новый стиль для кнопки --- */
+.emptyStateButton {
+    width: auto;
+}
+
+.footer {
+  padding: 16px 0;
+  background-color: var(--card-background);
+  border-top: 1px solid var(--border-color);
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+}
+
+.footerActions {
+  display: flex;
+  gap: 12px;
+}
+
+.callNextButton,
+.completeButton {
+  width: 100%;
+}
+
+.callNextButton {
+  background-color: var(--accent-blue);
+}
+
+.completeButton {
+  background-color: var(--accent-green);
+  flex-grow: 1;
+}
+
+.returnButton {
+  background-color: #8e8e93 !important;
+  width: auto;
+  flex-grow: 0;
+  flex-shrink: 0;
+}
+
+.modalContent {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.modalInstruction {
+  font-size: 15px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0 0 16px 0;
+  max-width: 350px;
+}
+
+.qrImage {
+  width: 100%;
+  max-width: 300px;
+  border-radius: 8px;
+  display: block;
+  margin-bottom: 16px;
+}
+
+.joinLink {
+  margin-bottom: 16px;
+  word-break: break-all;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.errorContainer {
+  text-align: center;
+  padding: 40px 20px;
+  margin-top: 40px;
+  border: 2px solid var(--accent-red);
+  border-radius: 16px;
+  font-size: 1.2em;
+  color: var(--text-primary);
+  background-color: var(--card-background);
+}

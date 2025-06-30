@@ -16,6 +16,8 @@ function JoinPage() {
     const navigate = useNavigate();
     
     const [queue, setQueue] = useState(null);
+    const [services, setServices] = useState([]);
+    const [selectedServiceId, setSelectedServiceId] = useState(null);
     const [memberName, setMemberName] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [isJoining, setIsJoining] = useState(false);
@@ -25,16 +27,28 @@ function JoinPage() {
     useEffect(() => {
         const loadPageData = async () => {
             setIsLoading(true);
+            setError('');
             try {
-                const { data: queueData, error: queueError } = await service.getQueueById(queueId);
-                if (queueError || !queueData) throw new Error('Очередь не найдена или была удалена.');
-                setQueue(queueData);
+                // --- ИЗМЕНЕНИЕ: Используем ОДНУ безопасную функцию вместо двух ---
+                // Эта функция вызовет наш новый RPC в Supabase, который обойдет RLS
+                const { data: pageData, error: pageError } = await service.getQueueDetailsForJoining(queueId);
 
+                if (pageError || !pageData || !pageData.queue) {
+                    throw new Error('Очередь не найдена или была удалена.');
+                }
+                
+                // Раскладываем полученные данные по состояниям
+                setQueue(pageData.queue);
+                setServices(pageData.services || []); // Теперь здесь будут данные!
+
+                // Проверка активной сессии (логика осталась прежней)
                 const session = getActiveSession();
                 if (session && session.queueId === queueId) {
                     const { data: memberData, error: memberError } = await service.getMemberById(session.memberId);
-                    if (memberData && !memberError && (memberData.status === 'waiting' || memberData.status === 'called')) {
+                    if (memberData && !memberError && ['waiting', 'called', 'acknowledged'].includes(memberData.status)) {
                         setCurrentActiveSession(session);
+                    } else {
+                        clearActiveSession();
                     }
                 }
             } catch (err) { 
@@ -46,29 +60,33 @@ function JoinPage() {
         loadPageData();
     }, [queueId]);
 
+    // Подписка на обновления статуса очереди (без изменений)
     useEffect(() => {
         if (!queueId) return;
         const channel = service.subscribe(`join-page-queue-status-${queueId}`, {
             event: 'UPDATE', schema: 'public', table: 'queues', filter: `id=eq.${queueId}`
         }, (payload) => {
             log('JoinPage', 'Получен realtime-статус очереди', payload.new.status);
-            setQueue(prevQueue => ({ ...prevQueue, status: payload.new.status }));
+            setQueue(prevQueue => ({ ...prevQueue, ...payload.new }));
         });
         return () => service.removeSubscription(channel);
     }, [queueId]);
 
     const handleJoinQueue = async () => {
+        // Проверка имени
         if (!memberName.trim()) {
             toast.error('Пожалуйста, введите ваше имя.');
             return;
         }
+        
+        // Ключевая проверка, которая теперь будет работать корректно
+        if (services.length > 0 && !selectedServiceId) {
+            toast.error('Пожалуйста, выберите услугу.');
+            return;
+        }
+
         setIsJoining(true);
         const toastId = toast.loading('Встаем в очередь...');
-
-        // --- НАЧАЛО ИЗМЕНЕНИЙ: БЛОК С ТАЙМ-АУТОМ ---
-        const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("Timeout")), 25000) // 25 секунд
-        );
         
         try {
             const chars = 'ACEHKMOPTX'; 
@@ -76,11 +94,14 @@ function JoinPage() {
             const randomNumber = Math.floor(10 + Math.random() * 90);
             const displayCode = `${randomChar}${randomNumber}`;
             
-            const { data, error } = await Promise.race([
-                service.createMember({ queue_id: queueId, member_name: memberName, display_code: displayCode }),
-                timeoutPromise
-            ]);
-            // --- КОНЕЦ ИЗМЕНЕНИЙ ---
+            const memberData = {
+                queue_id: queueId,
+                member_name: memberName.trim(),
+                display_code: displayCode,
+                service_id: selectedServiceId // Будет null, если услуг нет, или ID услуги
+            };
+            
+            const { data, error } = await service.createMember(memberData);
 
             if (error) throw error; 
 
@@ -91,20 +112,17 @@ function JoinPage() {
             navigate(`/wait/${queueId}/${data.id}`);
         } catch (err) {
             log('JoinPage', 'ОШИБКА в handleJoinQueue:', err.message, 'error');
-            // --- НАЧАЛО ИЗМЕНЕНИЙ: ОБРАБОТКА ОШИБОК ---
-            if (err.message === "Timeout") {
-                toast.error('Сервер отвечает слишком долго. Попробуйте, пожалуйста, еще раз.', { id: toastId, duration: 6000 });
-            } else if (err.message.includes('Queue is currently paused')) {
+            if (err.message.includes('Queue is currently paused')) {
                 toast.error("Запись в очередь приостановлена администратором.", { id: toastId });
             } else {
-                toast.error('Не удалось встать в очередь.', { id: toastId });
+                toast.error('Не удалось встать в очередь. Попробуйте снова.', { id: toastId });
             }
-            // --- КОНЕЦ ИЗМЕНЕНИЙ ---
         } finally {
             setIsJoining(false);
         }
     };
     
+    // Логика для активной сессии (без изменений)
     const handleReturnToWaitPage = () => {
         navigate(`/wait/${currentActiveSession.queueId}/${currentActiveSession.memberId}`);
     };
@@ -148,6 +166,9 @@ function JoinPage() {
         )
     }
 
+    // Логика для кнопки "Встать в очередь", теперь она будет работать как надо
+    const canJoin = !isJoining && memberName.trim() && (services.length === 0 || !!selectedServiceId);
+
     return (
         <div className={`container ${styles.pageContainer}`}>
             <div className={styles.header}>
@@ -163,17 +184,41 @@ function JoinPage() {
                     </div>
                 ) : (
                     <div className={styles.formContainer}>
-                        <Input 
-                            placeholder="Ваше имя или псевдоним"
-                            value={memberName}
-                            onChange={(e) => setMemberName(e.target.value)}
-                            onKeyPress={(e) => e.key === 'Enter' && handleJoinQueue()}
-                        />
-                        <Button onClick={handleJoinQueue} isLoading={isJoining}>Встать в очередь</Button>
+                        {services.length > 0 && (
+                            <div className={styles.serviceSelection}>
+                                <h3 className={styles.sectionTitle}>1. Выберите услугу:</h3>
+                                <div className={styles.serviceButtons}>
+                                    {services.map(service => (
+                                        <button 
+                                            key={service.id}
+                                            className={`${styles.serviceButton} ${selectedServiceId === service.id ? styles.selected : ''}`}
+                                            onClick={() => setSelectedServiceId(service.id)}
+                                        >
+                                            {service.name}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        
+                        <div>
+                           <h3 className={styles.sectionTitle}>{services.length > 0 ? '2. Введите ваше имя:' : 'Введите ваше имя:'}</h3>
+                           <Input 
+                                placeholder="Ваше имя или псевдоним"
+                                value={memberName}
+                                onChange={(e) => setMemberName(e.target.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && canJoin && handleJoinQueue()}
+                           />
+                        </div>
+
+                        <Button onClick={handleJoinQueue} isLoading={isJoining} disabled={!canJoin}>
+                            Встать в очередь
+                        </Button>
                     </div>
                 )}
             </Card>
         </div>
     );
 }
+
 export default JoinPage;

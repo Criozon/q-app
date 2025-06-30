@@ -1,40 +1,47 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { QrCode, Check, PhoneCall, UserX, ChevronRight, MoreVertical, Undo2, PauseCircle, PlayCircle, Users, Share2 } from 'lucide-react';
+import QRCode from 'qrcode';
+import { QrCode, UserX, MoreVertical, PauseCircle, PlayCircle, Users, Share2, Link2, Check, Info, PhoneCall, Undo2 } from 'lucide-react';
 import { useQueue } from '../context/QueueContext';
 import * as service from '../services/supabaseService'; 
 
 import Card from '../components/Card';
+import Section from '../components/Section';
 import Modal from '../components/Modal';
 import Button from '../components/Button';
 import ConfirmationModal from '../components/ConfirmationModal';
 import Spinner from '../components/Spinner';
+import InstructionCard from '../components/InstructionCard';
 import styles from './AdminPage.module.css';
 import log from '../utils/logger';
 
-const PAGE_SOURCE = 'AdminPage';
+const PAGE_SOURCE = 'MasterAdminPage';
 
 function AdminPage() {
     const { 
       queue, 
       members, 
+      windows,
       loading, 
       error, 
       qrCodeUrl, 
       joinUrl, 
-      calledMember, 
       waitingMembersCount,
-      setQueue
+      setQueue,
+      loadQueueData
     } = useQueue();
     
     const navigate = useNavigate();
     const location = useLocation();
-
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [isButtonLoading, setIsButtonLoading] = useState(false);
+    const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [copiedKey, setCopiedKey] = useState(null);
+    const [isProcessing, setIsProcessing] = useState(false);
     
+    const [selectedWindow, setSelectedWindow] = useState(null);
+    const [windowQrCode, setWindowQrCode] = useState('');
+
     const [confirmation, setConfirmation] = useState({
         isOpen: false,
         title: '',
@@ -44,29 +51,63 @@ function AdminPage() {
         isDestructive: false,
     });
     
-    const [isCopied, setIsCopied] = useState(false);
-    
     const menuRef = useRef(null);
+    const isSimpleMode = windows.length === 1;
 
     useEffect(() => {
-        if (calledMember) {
-            const memberElement = document.getElementById(`member-${calledMember.id}`);
-            if (memberElement) {
-                memberElement.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'center'
-                });
-            }
+        if (location.state?.fromCreation && isSimpleMode && !loading) {
+            setIsJoinModalOpen(true);
+            navigate('.', { replace: true, state: {} });
         }
-    }, [calledMember]);
-
-    useEffect(() => {
-        if (!loading && location.state?.fromCreation) {
-            setIsModalOpen(true);
-            navigate(location.pathname, { replace: true });
-        }
-    }, [loading, location, navigate]);
+    }, [location.state, isSimpleMode, loading, navigate]);
     
+    const callMember = async (memberId, windowId) => {
+        setIsProcessing(true);
+        const { error } = await service.assignAndCallMember(memberId, windowId);
+        if (error) toast.error("Не удалось вызвать участника.");
+        setIsProcessing(false);
+    };
+
+    const completeService = async (memberId) => {
+        setIsProcessing(true);
+        await service.updateMemberStatus(memberId, 'serviced');
+        setIsProcessing(false);
+    };
+
+    const returnToQueue = async (memberId) => {
+        setIsProcessing(true);
+        await service.returnMemberToWaiting(memberId);
+        setIsProcessing(false);
+    };
+    
+    const callNextInSimpleMode = async () => {
+        if (windows.length !== 1) return;
+        const waitingMembers = members.filter(m => m.status === 'waiting');
+        if (waitingMembers.length === 0) {
+            toast('В очереди больше никого нет.', { icon: 'ℹ️' });
+            return;
+        }
+        const nextMember = waitingMembers[0];
+        await callMember(nextMember.id, windows[0].id);
+    };
+
+    const handleOpenWindowModal = async (win) => {
+        setSelectedWindow(win);
+        const adminLink = `${window.location.origin}/window-admin/${win.admin_secret_key}`;
+        try {
+            const qr = await QRCode.toDataURL(adminLink, { width: 300, margin: 2 });
+            setWindowQrCode(qr);
+        } catch (err) {
+            log(PAGE_SOURCE, "Ошибка генерации QR для админа окна", err);
+            setWindowQrCode('');
+        }
+    };
+    
+    const handleCloseWindowModal = () => {
+        setSelectedWindow(null);
+        setWindowQrCode('');
+    }
+
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (menuRef.current && !menuRef.current.contains(event.target)) {
@@ -76,28 +117,6 @@ function AdminPage() {
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
-    
-    const handleMainButtonClick = async () => {
-        setIsButtonLoading(true);
-        const memberToUpdate = calledMember || members.find(m => m.status === 'waiting');
-        if (memberToUpdate) {
-            const newStatus = calledMember ? 'serviced' : 'called';
-            await service.updateMemberStatus(memberToUpdate.id, newStatus);
-        }
-        setIsButtonLoading(false);
-    };
-    
-    const handleReturnToQueue = async () => {
-        if (!calledMember) return;
-        setIsButtonLoading(true);
-        try {
-            await service.updateMemberStatus(calledMember.id, 'waiting');
-        } catch (err) {
-            toast.error("Не удалось вернуть участника в очередь.");
-        } finally {
-            setIsButtonLoading(false);
-        }
-    };
     
     const handleToggleQueueStatus = async () => {
         if (!queue) return;
@@ -112,11 +131,6 @@ function AdminPage() {
         }
     };
 
-    const handleCallSpecific = async (memberId) => {
-        if (calledMember) { toast.error('Завершите текущее обслуживание.'); return; }
-        await service.updateMemberStatus(memberId, 'called');
-    };
-    
     const handleRemoveMember = (member) => {
         setConfirmation({
             isOpen: true,
@@ -134,7 +148,6 @@ function AdminPage() {
     const handleDeleteCurrentQueue = () => {
         setIsMenuOpen(false);
         if (!queue) return;
-
         setConfirmation({
             isOpen: true,
             title: 'Удалить очередь?',
@@ -145,7 +158,6 @@ function AdminPage() {
                 const toastId = toast.loading(`Удаляем очередь "${queue.name}"...`);
                 const performDelete = async () => {
                     const { error } = await service.deleteQueue(queue.id);
-
                     if (error) {
                         toast.error(`Не удалось удалить очередь "${queue.name}".`, { id: toastId });
                     } else {
@@ -163,33 +175,39 @@ function AdminPage() {
             }
         });
     };
-
-    const handleShare = async () => {
-        if (isCopied) return;
-        const shareData = {
-            title: `Присоединяйтесь к очереди: ${queue.name}`,
-            text: `Ссылка для входа в очередь "${queue.name}"`,
-            url: joinUrl,
-        };
+    
+    const handleShare = async (shareData) => {
         if (navigator.share) {
             try {
                 await navigator.share(shareData);
-                log(PAGE_SOURCE, 'Успешно поделились через Web Share API');
             } catch (err) {
                 log(PAGE_SOURCE, 'Ошибка Web Share API:', err);
             }
         } else {
-            try {
-                await navigator.clipboard.writeText(joinUrl);
-                setIsCopied(true);
-                toast.success('Ссылка на очередь скопирована!');
-                setTimeout(() => setIsCopied(false), 2000);
-            } catch (err) {
-                toast.error('Не удалось скопировать ссылку.');
-                log(PAGE_SOURCE, 'Ошибка копирования в буфер:', err);
-            }
+            navigator.clipboard.writeText(shareData.url).then(() => {
+                setCopiedKey(shareData.key);
+                setTimeout(() => setCopiedKey(null), 2000);
+            }).catch(err => {
+                log(PAGE_SOURCE, "Ошибка копирования", err);
+                toast.error("Не удалось скопировать ссылку.");
+            });
         }
     };
+
+    const getStatusText = (member, isSimpleMode) => {
+        switch (member.status) {
+            case 'called':
+                return isSimpleMode ? 'Вызывается' : `Вызывается в: ${member.windows?.name || '...'}`;
+            case 'acknowledged':
+                 return isSimpleMode ? 'Идет к окну' : `Идет в: ${member.windows?.name || '...'}`;
+            case 'serviced':
+                return 'Обслужен';
+            default:
+                return 'Ожидает';
+        }
+    };
+
+    const assignedMemberInSimpleMode = isSimpleMode ? members.find(m => m.assigned_window_id === windows[0]?.id && (m.status === 'called' || m.status === 'acknowledged')) : null;
     
     if (loading) return (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -199,119 +217,194 @@ function AdminPage() {
     
     if (error) return <div className="container" style={{ textAlign: 'center', paddingTop: '40px' }}>{error}</div>;
 
-    const getStatusText = (status) => {
-        switch (status) {
-            case 'called': return 'Вызывается...';
-            case 'acknowledged': return '✅ Подтвердил, идет!';
-            case 'serviced': return 'Обслужен';
-            default: return 'Ожидает';
-        }
-    };
-
     return (
         <div className={styles.pageWrapper}>
             <header className={styles.header}>
-                <div className={`container ${styles.headerContent}`}>
-                    <div ref={menuRef} className={styles.adminMenuContainer}>
-                        <button onClick={() => setIsMenuOpen(!isMenuOpen)} className={styles.menuButton} title="Открыть меню">
-                            <MoreVertical size={24} color="var(--accent-blue)" />
-                        </button>
-                        {isMenuOpen && (
-                            <div className={styles.dropdownMenu}>
-                                <button onClick={handleDeleteCurrentQueue} className={`${styles.dropdownMenuItem} ${styles.dropdownMenuItemDelete}`}>
-                                    <UserX size={16} /> Удалить очередь
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                    <div className={styles.headerCenter}>
-                        <h1 className={styles.headerTitle}>{queue?.name}</h1>
-                        <div className={styles.queueCount}>
-                            <div className={`${styles.statusIndicator} ${queue?.status === 'paused' ? styles.statusIndicatorPaused : ''}`}></div>
-                            <span>{queue?.status === 'active' ? 'Активна' : 'Пауза'} | В очереди: {waitingMembersCount}</span>
+                <div className="container">
+                    <div className={styles.headerContent}>
+                        <div ref={menuRef} className={styles.adminMenuContainer}>
+                            <button onClick={() => setIsMenuOpen(!isMenuOpen)} className={styles.menuButton} title="Открыть меню">
+                                <MoreVertical size={24} color="var(--accent-blue)" />
+                            </button>
+                            {isMenuOpen && (
+                                <div className={styles.dropdownMenu}>
+                                    <button onClick={handleDeleteCurrentQueue} className={`${styles.dropdownMenuItem} ${styles.dropdownMenuItemDelete}`}>
+                                        <UserX size={16} /> Удалить очередь
+                                    </button>
+                                </div>
+                            )}
                         </div>
-                    </div>
-                    <div className={styles.headerActions}>
-                        <button onClick={handleToggleQueueStatus} className={styles.controlButton} title={queue?.status === 'active' ? 'Приостановить запись' : 'Возобновить запись'}>
-                            {queue?.status === 'active' ? <PauseCircle size={24} color="#ff9500" /> : <PlayCircle size={24} color="var(--accent-green)" />}
-                        </button>
-                        <button onClick={() => setIsModalOpen(true)} className={styles.controlButton} title="Показать QR-код и ссылку">
-                            <QrCode size={24} color="var(--accent-blue)" />
-                        </button>
+                        <div className={styles.headerCenter}>
+                            <h1 className={styles.headerTitle}>{queue?.name}</h1>
+                            <div className={styles.queueCount}>
+                                <div className={`${styles.statusIndicator} ${queue?.status === 'paused' ? styles.statusIndicatorPaused : ''}`}></div>
+                                <span>{queue?.status === 'active' ? 'Активна' : 'Пауза'} | В очереди: {waitingMembersCount}</span>
+                            </div>
+                        </div>
+                        <div className={styles.headerActions}>
+                            <button onClick={handleToggleQueueStatus} className={styles.controlButton} title={queue?.status === 'active' ? 'Приостановить запись' : 'Возобновить запись'}>
+                                {queue?.status === 'active' ? <PauseCircle size={24} color="#ff9500" /> : <PlayCircle size={24} color="var(--accent-green)" />}
+                            </button>
+                            <button onClick={() => setIsJoinModalOpen(true)} className={styles.controlButton} title="Показать QR-код и ссылку для входа">
+                                <QrCode size={24} color="var(--accent-blue)" />
+                            </button>
+                        </div>
                     </div>
                 </div>
             </header>
+            
             <main className={`container ${styles.mainContent}`}>
-                <div className={styles.memberList}>
-                    {members.map(member => {
-                        const memberCardClasses = [ 
-                            styles.memberCard, 
-                            member.status === 'called' && styles.called,
-                            member.status === 'acknowledged' && styles.acknowledged,
-                            member.status === 'serviced' && styles.serviced 
-                        ].filter(Boolean).join(' ');
-                        
-                        return (
-                            <div id={`member-${member.id}`} key={member.id}>
-                                <Card className={memberCardClasses}>
-                                    <div className={styles.memberInfo}>
-                                        <p className={styles.memberName}>{member.display_code || `#${member.ticket_number}`} - {member.member_name}</p>
-                                        <p className={styles.memberStatus}>{getStatusText(member.status)}</p>
-                                    </div>
-                                    <div className={styles.memberActions}>
-                                        {member.status === 'waiting' && <Button onClick={() => handleCallSpecific(member.id)} disabled={!!calledMember || isButtonLoading} className={`${styles.actionButton} ${styles.priorityCallButton}`} title="Приоритетный вызов"><ChevronRight size={20} /></Button>}
-                                        <Button onClick={() => handleRemoveMember(member)} disabled={isButtonLoading} className={`${styles.actionButton} ${styles.removeButton}`} title="Удалить участника"><UserX size={20} /></Button>
-                                    </div>
-                                </Card>
-                            </div>
-                        )
-                    })}
-                    {members.length === 0 && (
-                        <div className={styles.emptyState}>
-                            <Users size={48} className={styles.emptyStateIcon} />
-                            <h3 className={styles.emptyStateTitle}>В очереди пока никого нет</h3>
-                            <p className={styles.emptyStateText}>
-                                Поделитесь QR-кодом или ссылкой, чтобы люди могли присоединиться.
-                            </p>
-                            <Button 
-                                onClick={() => setIsModalOpen(true)} 
-                                className={styles.emptyStateButton}
-                            >
-                                <QrCode size={18} />
-                                Показать QR-код
-                            </Button>
+                {!isSimpleMode && (
+                    <Section title="Панели операторов">
+                        <InstructionCard icon={<Info size={20} />} title="Раздайте доступы операторам">
+                            Кликните по карточке, чтобы открыть панель окна для себя, или нажмите "Поделиться", чтобы отправить ссылку.
+                        </InstructionCard>
+                        <div className={styles.windowsList}>
+                            {windows.map(win => (
+                                <div key={win.id} className={styles.windowItemContainer}>
+                                    <Link 
+                                        to={`/window-admin/${win.admin_secret_key}`} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className={styles.windowLink}
+                                        title={`Открыть панель для "${win.name}"`}
+                                    >
+                                        <Card className={styles.windowCard}>
+                                            <div className={styles.windowInfo}>
+                                                <Link2 size={20} className={styles.windowIcon} />
+                                                <p className={styles.windowName}>{win.name}</p>
+                                            </div>
+                                        </Card>
+                                    </Link>
+                                    <Button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenWindowModal(win);
+                                        }}
+                                        className={styles.copyButton}
+                                        title={`Поделиться доступом для "${win.name}"`}
+                                    >
+                                        <Share2 size={18} />
+                                    </Button>
+                                </div>
+                            ))}
                         </div>
-                    )}
-                </div>
+                    </Section>
+                )}
+                
+                <Section title="Общая очередь">
+                    <div className={styles.memberList}>
+                        {members.length > 0 ? (
+                            members.map(member => {
+                                const memberCardClasses = [
+                                    styles.memberCard,
+                                    member.status === 'called' && styles.called,
+                                    member.status === 'called' && 'called-animation',
+                                    member.status === 'acknowledged' && styles.acknowledged,
+                                    member.status === 'serviced' && styles.serviced
+                                ].filter(Boolean).join(' ');
+
+                                return (
+                                    <Card key={member.id} className={memberCardClasses}>
+                                        <div className={styles.memberInfo}>
+                                            <p className={styles.memberName}>{member.display_code || `#${member.ticket_number}`} - {member.member_name}</p>
+                                            {member.services?.name && (
+                                                <p className={styles.memberService}>{member.services.name}</p>
+                                            )}
+                                            <p className={styles.memberStatus}>{getStatusText(member, isSimpleMode)}</p>
+                                        </div>
+                                        <div className={styles.memberActions}>
+                                            {isSimpleMode && member.status === 'waiting' && (
+                                                <Button onClick={() => callMember(member.id, windows[0].id)} className={`${styles.actionButton} ${styles.callButton}`} title="Вызвать участника">
+                                                    <PhoneCall size={20} />
+                                                </Button>
+                                            )}
+                                            <Button onClick={() => handleRemoveMember(member)} className={`${styles.actionButton} ${styles.removeButton}`} title="Удалить участника"><UserX size={20} /></Button>
+                                        </div>
+                                    </Card>
+                                )
+                            })
+                        ) : (
+                            <div className={styles.emptyState}>
+                                <Users size={48} className={styles.emptyStateIcon} />
+                                <h3 className={styles.emptyStateTitle}>В очереди пока никого нет</h3>
+                                <p className={styles.emptyStateText}>
+                                    Поделитесь QR-кодом или ссылкой, чтобы люди могли присоединиться.
+                                </p>
+                                <Button 
+                                    onClick={() => setIsJoinModalOpen(true)} 
+                                    className={styles.emptyStateButton}
+                                >
+                                    <QrCode size={18} />
+                                    Показать QR-код
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                </Section>
             </main>
-            <footer className={styles.footer}>
-                <div className={`container ${styles.footerActions}`}>
-                    {calledMember ? (
-                        <>
-                            <Button onClick={handleReturnToQueue} isLoading={isButtonLoading} className={styles.returnButton}>
-                                <Undo2 size={20} /> Вернуть
+
+            {isSimpleMode && (
+                <footer className={styles.footer}>
+                    <div className={`container ${styles.footerActions}`}>
+                        {assignedMemberInSimpleMode ? (
+                             <>
+                                <Button onClick={() => returnToQueue(assignedMemberInSimpleMode.id)} isLoading={isProcessing} className={styles.returnButton}>
+                                    <Undo2 size={20} /> Вернуть
+                                </Button>
+                                <Button onClick={() => completeService(assignedMemberInSimpleMode.id)} isLoading={isProcessing} className={styles.completeButton}>
+                                    <Check size={20} /> Завершить
+                                </Button>
+                            </>
+                        ) : (
+                             <Button onClick={callNextInSimpleMode} isLoading={isProcessing} disabled={waitingMembersCount === 0 || queue?.status === 'paused'} className={styles.callNextButton}>
+                                <PhoneCall size={20} /> Вызвать следующего
                             </Button>
-                            <Button onClick={handleMainButtonClick} isLoading={isButtonLoading} className={styles.completeButton}>
-                                <Check size={20} /> Завершить ({calledMember.display_code || calledMember.ticket_number})
-                            </Button>
-                        </>
-                    ) : (
-                        <Button onClick={handleMainButtonClick} isLoading={isButtonLoading} disabled={waitingMembersCount === 0} className={styles.callNextButton}>
-                            <PhoneCall size={20} /> Вызвать следующего
-                        </Button>
-                    )}
-                </div>
-            </footer>
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Покажите QR-код или отправьте ссылку">
+                        )}
+                    </div>
+                </footer>
+            )}
+
+            {/* --- НАЧАЛО ИЗМЕНЕНИЙ: МОДАЛЬНОЕ ОКНО --- */}
+            <Modal isOpen={isJoinModalOpen} onClose={() => setIsJoinModalOpen(false)}>
                 <div className={styles.modalContent}>
+                    <p className={styles.modalInstruction}>
+                        Поделитесь QR-кодом или ссылкой, чтобы люди могли присоединиться.
+                    </p>
                     {qrCodeUrl ? <img src={qrCodeUrl} alt="QR Code" className={styles.qrImage} /> : <Spinner />}
                     <p className={styles.joinLink}>{joinUrl || 'Генерация ссылки...'}</p>
-                    <Button onClick={handleShare} disabled={!joinUrl || isCopied}>
-                        {isCopied ? (<><Check size={18} /> Скопировано!</>) : (<><Share2 size={18} /> Поделиться</>)}
+                    <Button onClick={() => handleShare({url: joinUrl, title: `Вход в очередь: ${queue?.name}`, text: 'Отсканируйте QR или перейдите по ссылке, чтобы войти в очередь.', key: 'join-link' })}>
+                        {copiedKey === 'join-link' ? (<><Check size={18} /> Скопировано!</>) : (<><Share2 size={18} /> Поделиться</>)}
                     </Button>
                 </div>
             </Modal>
+            {/* --- КОНЕЦ ИЗМЕНЕНИЙ --- */}
             
+            <Modal 
+                isOpen={!!selectedWindow} 
+                onClose={handleCloseWindowModal} 
+                title={`Доступ для "${selectedWindow?.name}"`}
+                backdropClassName={styles.adminModalBackdrop}
+            >
+                {selectedWindow && (
+                    <div className={styles.modalContent}>
+                        {windowQrCode ? <img src={windowQrCode} alt={`QR для ${selectedWindow.name}`} className={styles.qrImage} /> : <Spinner />}
+                        <p className={styles.joinLink}>{`${window.location.origin}/window-admin/${selectedWindow.admin_secret_key}`}</p>
+                        <Button
+                            className={styles.adminShareButton}
+                            onClick={() => handleShare({
+                                url: `${window.location.origin}/window-admin/${selectedWindow.admin_secret_key}`,
+                                title: `Доступ к управлению: ${selectedWindow.name}`,
+                                text: `Ссылка для входа в панель управления очередью для "${selectedWindow.name}"`,
+                                key: selectedWindow.id
+                            })}
+                        >
+                            {copiedKey === selectedWindow.id ? (<><Check size={18} /> Скопировано!</>) : (<><Share2 size={18} /> Поделиться доступом</>)}
+                        </Button>
+                    </div>
+                )}
+            </Modal>
+
             <ConfirmationModal 
                 isOpen={confirmation.isOpen} 
                 onClose={() => setConfirmation({ ...confirmation, isOpen: false })} 

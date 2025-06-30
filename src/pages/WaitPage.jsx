@@ -17,7 +17,7 @@ function WaitPage() {
     const { queueId, memberId } = useParams();
     const navigate = useNavigate();
     const [myInfo, setMyInfo] = useState(null);
-    const [queueName, setQueueName] = useState('');
+    const [queueInfo, setQueueInfo] = useState(null); 
     const [peopleAhead, setPeopleAhead] = useState(0);
     const [status, setStatus] = useState('loading');
     const [errorMessage, setErrorMessage] = useState('');
@@ -27,6 +27,8 @@ function WaitPage() {
     const audioPlayer = useRef(null);
     const [confirmation, setConfirmation] = useState({ isOpen: false, title: '', message: null, onConfirm: () => {} });
     
+    const isSimpleMode = queueInfo?.window_count === 1;
+
     const waitCardClasses = [
         styles.waitCard,
         myInfo?.status === 'called' ? styles.called : '',
@@ -80,7 +82,7 @@ function WaitPage() {
         setConfirmation({
             isOpen: true,
             title: 'Выход из очереди',
-            message: <p>Вы уверены, что хотите покинуть очередь <strong>"{queueName}"</strong>?</p>,
+            message: <p>Вы уверены, что хотите покинуть очередь <strong>"{queueInfo?.name}"</strong>?</p>,
             confirmText: 'Да, выйти',
             isDestructive: true,
             onConfirm: async () => {
@@ -104,6 +106,7 @@ function WaitPage() {
     const checkMyStatus = async () => {
         log(PAGE_SOURCE, 'Проверка статуса...');
         try {
+            // --- ИЗМЕНЕНИЕ: Убеждаемся, что вызывается правильная функция из сервиса ---
             const { data, error } = await service.getMemberById(memberId);
             if (!data && error) {
                  const { data: queueData } = await service.getQueueById(queueId);
@@ -117,7 +120,7 @@ function WaitPage() {
                 throw new Error('Очередь, в которой вы находились, была удалена.');
             }
             setMyInfo(data);
-            setQueueName(data.queues.name);
+            setQueueInfo(data.queues);
             const { count } = await service.getWaitingMembersCount(queueId, data.ticket_number);
             setPeopleAhead(count || 0);
             if (status !== 'ok') setStatus('ok');
@@ -181,8 +184,9 @@ function WaitPage() {
                 document.title = "ВАША ОЧЕРЕДЬ!";
                 audioPlayer.current?.play().catch(e => log(PAGE_SOURCE, 'Ошибка воспроизведения аудио', e));
                 if (notificationPermission === 'granted') {
+                    const windowText = !isSimpleMode && myInfo.windows?.name ? ` в ${myInfo.windows.name}` : '';
                     new Notification('Ваша очередь подошла!', {
-                        body: `Вас вызывают в очереди "${queueName}". Ваш код: ${myInfo.display_code}`,
+                        body: `Вас вызывают${windowText}. Ваш код: ${myInfo.display_code}`,
                         icon: '/vite.svg',
                         tag: `queue-notification-${queueId}`,
                     });
@@ -195,7 +199,7 @@ function WaitPage() {
 
             if (myInfo.status === 'waiting' && notificationTriggered.current) {
                 notificationTriggered.current = false;
-                document.title = `Q-App - Ожидание в ${queueName || ''}`;
+                document.title = `Q-App - Ожидание в ${queueInfo?.name || ''}`;
             }
             
             if (myInfo.status === 'serviced') {
@@ -203,7 +207,7 @@ function WaitPage() {
                 clearActiveSession();
             }
         }
-    }, [myInfo, notificationPermission, queueName, queueId]);
+    }, [myInfo, notificationPermission, queueInfo, queueId, isSimpleMode]);
     
     if (status === 'loading') return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spinner /></div>;
     if (status === 'error') return <div className={`container ${styles.errorContainer}`}>{errorMessage}</div>;
@@ -212,16 +216,26 @@ function WaitPage() {
         <div className={`container ${styles.pageContainer}`}>
              <div className={waitCardClasses}>
                 <audio ref={audioPlayer} src="/notification.mp3" preload="auto" loop />
-                <h2>Очередь: {queueName}</h2>
+                <h2>Очередь: {queueInfo?.name}</h2>
                 <hr className={styles.divider}/>
                 <p className={styles.greeting}>Здравствуйте, <strong>{myInfo?.member_name}</strong>!</p>
+
+                {/* --- ИЗМЕНЕНИЕ: Эта строка теперь будет работать правильно --- */}
+                {myInfo?.services?.name && (
+                    <p className={styles.serviceName}>Услуга: <strong>{myInfo.services.name}</strong></p>
+                )}
+
                 <h1 className={styles.displayCodeLabel}>Ваш код: <span className={styles.displayCode}>{myInfo?.display_code}</span></h1>
                 
                 {myInfo?.status === 'waiting' && (<><p className={styles.peopleAhead}>Перед вами: <strong>{peopleAhead}</strong> чел.</p><p className={styles.autoUpdateText}>Эта страница будет обновляться автоматически.</p></>)}
                 
                 {myInfo?.status === 'called' && (
                     <div className={`${styles.statusBox} ${styles.statusCalled}`}>
-                        <h2>Вас вызывают!</h2>
+                        {isSimpleMode ? (
+                            <h2>Вас вызывают!</h2>
+                        ) : (
+                            <h2>Вас вызывают в <span className={styles.windowName}>{myInfo.windows?.name || '...'}</span>!</h2>
+                        )}
                         <div className={styles.actionButtons}>
                             <Button onClick={handleDeclineCall} className={styles.declineButton}>
                                 <X size={20} /> Отказаться
@@ -235,13 +249,16 @@ function WaitPage() {
                 
                 {myInfo?.status === 'acknowledged' && (
                     <div className={`${styles.statusBox} ${styles.statusAcknowledged}`}>
-                        <h2>Администратор ожидает вас.</h2>
+                         {isSimpleMode ? (
+                            <h2>Администратор ожидает вас</h2>
+                         ) : (
+                            <h2>Администратор ожидает вас в <span className={styles.windowName}>{myInfo.windows?.name || '...'}</span></h2>
+                         )}
                     </div>
                 )}
 
                 {myInfo?.status === 'serviced' && (<div className={`${styles.statusBox} ${styles.statusServiced}`}><h2>Ваше обслуживание завершено.</h2></div>)}
                 
-                {/* --- ИЗМЕНЕНИЕ: Условие стало проще --- */}
                 {(myInfo?.status === 'waiting') && (
                     <Button onClick={handleLeaveQueue} isLoading={isLeaving} className={styles.leaveButton}>
                         Выйти из очереди

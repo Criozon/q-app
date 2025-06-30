@@ -1,28 +1,25 @@
 import React from 'react';
 import { X } from 'lucide-react';
-import styles from './Modal.module.css'; // 1. Импортируем модуль
+import styles from './Modal.module.css';
 
-function Modal({ isOpen, onClose, title, children }) {
-    // Датчики для отладки можно оставить, они полезны
-    console.log(`--- Modal: Состояние isOpen: ${isOpen}`);
-
+function Modal({ isOpen, onClose, title, children, backdropClassName }) {
     if (!isOpen) {
         return null;
     }
 
-    console.log(`--- Modal: Рендерится с заголовком: "${title}"`);
-
-    // 2. Все объекты стилей (backdropStyle, modalStyle и т.д.) удалены
+    const backdropClasses = [
+        styles.backdrop,
+        backdropClassName
+    ].filter(Boolean).join(' ');
 
     return (
-        // 3. Заменяем `style` на `className`
-        <div className={styles.backdrop} onClick={() => { console.log('--- Modal: Клик по фону, закрываем...'); onClose(); }}>
+        <div className={backdropClasses} onClick={onClose}>
             <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-                <button className={styles.closeButton} onClick={() => { console.log('--- Modal: Нажата кнопка X, закрываем...'); onClose(); }}>
+                <button className={styles.closeButton} onClick={onClose}>
                     <X size={18} />
                 </button>
-                {/* Для заголовка тоже используем класс */}
-                <h2 className={styles.title}>{title}</h2>
+                {/* --- ИЗМЕНЕНИЕ: Отображаем заголовок, только если он передан --- */}
+                {title && <h2 className={styles.title}>{title}</h2>}
                 {children}
             </div>
         </div>

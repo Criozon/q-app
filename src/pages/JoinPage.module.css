@@ -1,5 +1,6 @@
 .pageContainer {
   padding-top: 40px;
+  padding-bottom: 40px;
 }
 
 .header {
@@ -21,6 +22,10 @@
   font-size: 18px;
   color: var(--text-secondary);
   margin-top: 10px;
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
+  line-height: 1.5;
 }
 
 .formContainer {
@@ -47,7 +52,6 @@
   background-color: #d1d1d6 !important;
 }
 
-/* --- НОВЫЕ СТИЛИ ДЛЯ СООБЩЕНИЯ О ПАУЗЕ --- */
 .pausedMessage {
     display: flex;
     flex-direction: column;
@@ -59,3 +63,50 @@
     font-weight: 500;
     color: var(--text-secondary);
 }
+
+.serviceSelection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sectionTitle {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.serviceButtons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.serviceButton {
+  width: 100%;
+  padding: 16px;
+  font-size: 17px;
+  text-align: center;
+  font-weight: 500;
+  background-color: var(--background);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.serviceButton:hover {
+  border-color: var(--accent-blue);
+  background-color: #e3f2fd;
+}
+
+/* --- НАЧАЛО ИЗМЕНЕНИЯ: ОБНОВЛЕННЫЙ СТИЛЬ ДЛЯ ВЫБРАННОЙ КНОПКИ --- */
+.serviceButton.selected {
+  background-color: #e3f2fd; /* Светло-голубой фон */
+  color: var(--accent-blue);   /* Синий текст */
+  border-color: var(--accent-blue); /* Синяя рамка */
+  font-weight: 600;
+}
+/* --- КОНЕЦ ИЗМЕНЕНИЯ --- */

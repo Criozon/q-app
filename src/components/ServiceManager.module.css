@@ -1,0 +1,35 @@
+.container {
+  background-color: var(--card-background);
+  padding: 20px;
+  border-radius: 12px;
+}
+.title {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+}
+.addServiceForm {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.addServiceForm > div { flex-grow: 1; }
+.addServiceForm button { width: 50px; padding: 0 !important; flex-shrink: 0;}
+.serviceList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.serviceItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--background);
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+.deleteButton {
+  background: none; border: none; cursor: pointer; color: var(--text-secondary);
+  padding: 4px; line-height: 0; border-radius: 50%;
+}
+.deleteButton:hover { color: var(--accent-red); background-color: #fcebeb;}
+.noServicesText { color: var(--text-secondary); text-align: center; margin: 10px 0;}

@@ -20,27 +20,10 @@
   max-width: 400px;
 }
 
-.creationCard {
-  background-color: var(--card-background);
-  padding: 20px;
-  border-radius: 12px;
-  border: 1px solid var(--border-color);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-}
-
 .form {
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-.input {
-  width: 100%;
-  padding: 12px;
-  font-size: 16px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  box-sizing: border-box;
 }
 
 .textarea {
@@ -54,28 +37,60 @@
   resize: vertical;
 }
 
-.button {
-  padding: 12px;
-  font-size: 16px;
-  font-weight: 600;
-  background-color: var(--accent-blue);
-  color: white; 
-  border: none;
+.formRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 12px;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
-  cursor: pointer;
-  transition: background-color 0.2s, opacity 0.2s;
+  background-color: var(--background);
 }
 
-.button:disabled {
-  background-color: #a0a0a0;
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-.footerText {
-  text-align: center;
+.formLabel {
+  font-size: 16px;
+  font-weight: 500;
   color: var(--text-secondary);
-  margin-top: 20px;
+}
+
+.serviceSection {
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.serviceHelpText {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0 0 16px 0;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.serviceRowsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.addButton {
+  background-color: transparent !important;
+  color: var(--accent-blue) !important;
+  font-weight: 500 !important;
+  display: block;
+  margin: 0 auto;
+  padding: 8px 16px !important;
+  width: auto;
+}
+
+.addButton:hover:not(:disabled) {
+  background-color: rgba(0, 122, 255, 0.1) !important;
+}
+
+.createButton {
+  padding: 16px !important;
+  font-size: 18px !important;
+  margin-top: 8px;
 }
 
 .myQueuesList {
@@ -125,5 +140,3 @@
   background-color: #f0f2f5;
   color: var(--accent-red);
 }
-
-/* Стили для toast удалены, так как они больше не нужны */

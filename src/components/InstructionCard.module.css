@@ -1,0 +1,40 @@
+.card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  background-color: #e3f2fd; /* Светло-голубой фон, как в подсказках */
+  border: 1px solid #90caf9;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px; /* Отступ снизу до списка окон */
+}
+
+.iconWrapper {
+  flex-shrink: 0;
+  color: var(--accent-blue);
+  background-color: rgba(0, 122, 255, 0.1);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.contentWrapper {
+  flex-grow: 1;
+}
+
+.title {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}

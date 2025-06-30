@@ -1,0 +1,66 @@
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background-color: var(--background);
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.inputWrapper {
+  flex-grow: 1;
+}
+
+.inputWrapper input {
+  padding: 10px 12px !important;
+  font-size: 15px !important;
+  background-color: white !important;
+}
+
+.windowSelector {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+  flex-wrap: wrap; /* Для переноса на маленьких экранах */
+  justify-content: flex-end;
+}
+
+.windowChip {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  background-color: white;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.windowChip:hover:not(.selected) {
+    border-color: var(--accent-blue);
+}
+
+.windowChip.selected {
+  background-color: var(--accent-blue);
+  color: white;
+  border-color: var(--accent-blue);
+  font-weight: 600;
+}
+
+.removeButton {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.removeButton:hover {
+  background-color: #fcebeb;
+  color: var(--accent-red);
+}

@@ -52,22 +52,14 @@ h1, h2, h3, h4, h5, h6 { margin: 0; font-weight: 600; }
 }
 
 /* ==========================================================================
-   4. Анимация 
+   4. Анимации
    ========================================================================== */
-@keyframes blink-animation {
-  0% { 
-    background-color: var(--card-background); 
-  }
-  50% { 
-    background-color: var(--highlight-green); 
-  }
-  100% { 
-    background-color: var(--card-background); 
+@keyframes green-blink {
+  50% {
+    background-color: var(--highlight-green);
   }
 }
 
 .called-animation {
-  animation-name: blink-animation;
-  animation-duration: 1.5s;
-  animation-iteration-count: infinite;
+  animation: green-blink 1.5s infinite;
 }
