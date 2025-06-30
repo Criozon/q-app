@@ -29,7 +29,6 @@ function AdminPage() {
       joinUrl, 
       waitingMembersCount,
       setQueue,
-      loadQueueData
     } = useQueue();
     
     const navigate = useNavigate();
@@ -61,12 +60,18 @@ function AdminPage() {
         }
     }, [location.state, isSimpleMode, loading, navigate]);
     
+    // --- НАЧАЛО ИЗМЕНЕНИЙ ---
+    // Функция теперь вызывает RPC, а не прямой update
     const callMember = async (memberId, windowId) => {
         setIsProcessing(true);
-        const { error } = await service.assignAndCallMember(memberId, windowId);
-        if (error) toast.error("Не удалось вызвать участника.");
+        const { error } = await service.callSpecificMember(memberId, windowId);
+        if (error) {
+            toast.error("Не удалось вызвать участника.");
+            console.error("RPC call error:", error); // Добавим лог для отладки
+        }
         setIsProcessing(false);
     };
+    // --- КОНЕЦ ИЗМЕНЕНИЙ ---
 
     const completeService = async (memberId) => {
         setIsProcessing(true);
@@ -365,7 +370,6 @@ function AdminPage() {
                 </footer>
             )}
 
-            {/* --- НАЧАЛО ИЗМЕНЕНИЙ: МОДАЛЬНОЕ ОКНО --- */}
             <Modal isOpen={isJoinModalOpen} onClose={() => setIsJoinModalOpen(false)}>
                 <div className={styles.modalContent}>
                     <p className={styles.modalInstruction}>
@@ -378,7 +382,6 @@ function AdminPage() {
                     </Button>
                 </div>
             </Modal>
-            {/* --- КОНЕЦ ИЗМЕНЕНИЙ --- */}
             
             <Modal 
                 isOpen={!!selectedWindow} 
