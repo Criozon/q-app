@@ -39,7 +39,9 @@ export function QueueProvider({ children }) {
       setServices(servicesRes.data || []);
 
       if (!joinUrl) {
-          const currentJoinUrl = `${window.location.origin}/join/${qData.id}`;
+          // --- НАЧАЛО ИЗМЕНЕНИЯ: Используем short_id ---
+          const currentJoinUrl = `${window.location.origin}/join/${qData.short_id}`;
+          // --- КОНЕЦ ИЗМЕНЕНИЯ ---
           setJoinUrl(currentJoinUrl);
           const qrUrl = await QRCode.toDataURL(currentJoinUrl);
           setQrCodeUrl(qrUrl);
@@ -67,7 +69,6 @@ export function QueueProvider({ children }) {
     };
 
     const memberChannel = service.subscribe(`context-admin-members-${queue.id}`, { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queue.id}` }, handleRealtimeUpdate);
-    // Исправлено: отдельная подписка для других таблиц
     const otherTablesChannel = service.subscribe(`context-admin-other-${queue.id}`, { event: '*', schema: 'public', table: 'queues,services,window_services' }, handleRealtimeUpdate);
 
     return () => {

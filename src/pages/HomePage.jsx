@@ -13,9 +13,9 @@ import Input from '../components/Input';
 import NumberStepper from '../components/NumberStepper';
 import ServiceRow from '../components/ServiceRow';
 import log from '../utils/logger';
-// --- НАЧАЛО ИЗМЕНЕНИЯ: ИСПРАВЛЕНА ОШИБКА В ИМПОРТЕ ---
+// --- НАЧАЛО ИСПРАВЛЕНИЯ: Корректный синтаксис импорта ---
 import * as service from '../services/supabaseService';
-// --- КОНЕЦ ИЗМЕНЕНИЯ ---
+// --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 import { useMyQueues } from '../hooks/useMyQueues';
 import { getActiveSession, clearActiveSession } from '../utils/session';
 

@@ -27,11 +27,8 @@ function WindowAdminPage() {
         [members, windowInfo]
     );
     
-    // --- НАЧАЛО ИСПРАВЛЕНИЙ ---
-    // Выносим вычисления в тело компонента, где и должны быть все хуки
     const waitingMembers = useMemo(() => members.filter(m => m.status === 'waiting'), [members]);
     const waitingMembersCount = waitingMembers.length;
-    // --- КОНЕЦ ИСПРАВЛЕНИЙ ---
 
     useEffect(() => {
         if (assignedMember) {
@@ -99,7 +96,6 @@ function WindowAdminPage() {
                         <h1 className={styles.headerTitle}>{windowInfo?.name}</h1>
                         <div className={styles.queueCount}>
                             <div className={`${styles.statusIndicator} ${queueInfo?.status === 'paused' ? styles.statusIndicatorPaused : ''}`}></div>
-                            {/* Используем новую переменную */}
                             <span>В очереди: {waitingMembersCount}</span>
                         </div>
                     </div>
@@ -150,13 +146,24 @@ function WindowAdminPage() {
                             )
                         })}
                         
+                        {/* --- НАЧАЛО ИЗМЕНЕНИЙ: Обновленный блок для пустого состояния --- */}
                         {members.length === 0 && (
                             <div className={styles.emptyState}>
                                 <Users size={48} className={styles.emptyStateIcon} />
                                 <h3 className={styles.emptyStateTitle}>В очереди пока никого нет</h3>
-                                <p className={styles.emptyStateText}>Нажмите на иконку QR-кода вверху, чтобы показать клиенту код для входа.</p>
+                                <p className={styles.emptyStateText}>
+                                    Поделитесь QR-кодом или ссылкой, чтобы люди могли присоединиться.
+                                </p>
+                                <Button 
+                                    onClick={() => setIsJoinModalOpen(true)} 
+                                    className={styles.emptyStateButton}
+                                >
+                                    <QrCode size={18} />
+                                    Показать QR-код
+                                </Button>
                             </div>
                         )}
+                        {/* --- КОНЕЦ ИЗМЕНЕНИЙ --- */}
                     </div>
                 </div>
             </main>
@@ -169,7 +176,6 @@ function WindowAdminPage() {
                             <Button onClick={() => completeService(assignedMember.id)} isLoading={isProcessing} className={styles.completeButton}><Check size={20} /> Завершить</Button>
                         </>
                     ) : (
-                        // Используем новую переменную
                         <Button onClick={callNext} isLoading={isProcessing} disabled={waitingMembersCount === 0 || queueInfo?.status === 'paused'} className={styles.callNextButton}><PhoneCall size={20} /> Вызвать следующего</Button>
                     )}
                 </div>

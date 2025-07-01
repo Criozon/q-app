@@ -6,10 +6,10 @@ import AdminPage from './pages/AdminPage';
 import JoinPage from './pages/JoinPage';
 import WaitPage from './pages/WaitPage';
 import PrintPage from './pages/PrintPage';
-import WindowAdminPage from './pages/WindowAdminPage'; // НОВЫЙ ИМПОРТ
+import WindowAdminPage from './pages/WindowAdminPage';
 
 import { QueueProvider } from './context/QueueContext';
-import { WindowAdminProvider } from './context/WindowAdminContext'; // НОВЫЙ ИМПОРТ
+import { WindowAdminProvider } from './context/WindowAdminContext';
 
 import './App.css'; 
 
@@ -22,7 +22,7 @@ function App() {
         <Routes>
           {/* Маршруты для клиента */}
           <Route path="/" element={<HomePage />} />
-          <Route path="/join/:queueId" element={<JoinPage />} />
+          <Route path="/join/:shortId" element={<JoinPage />} />
           <Route path="/wait/:queueId/:memberId" element={<WaitPage />} />
           <Route path="/print/:queueId" element={<PrintPage />} />
           
@@ -36,7 +36,7 @@ function App() {
             } 
           />
 
-          {/* НОВЫЙ МАРШРУТ для Администратора Окна */}
+          {/* Маршрут для Администратора Окна */}
           <Route
             path="/window-admin/:windowSecretKey"
             element={
