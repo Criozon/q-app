@@ -9,9 +9,7 @@ import Card from '../components/Card';
 import styles from './WaitPage.module.css';
 import log from '../utils/logger';
 import * as service from '../services/supabaseService';
-// --- НАЧАЛО ИЗМЕНЕНИЙ: Удаляем импорт несуществующего хука ---
 import { clearActiveSession } from '../utils/session';
-// --- КОНЕЦ ИЗМЕНЕНИЙ ---
 
 const PAGE_SOURCE = 'WaitPage';
 
@@ -105,10 +103,12 @@ function WaitPage() {
         });
     };
     
-    const checkMyStatus = async () => {
+    const checkMyStatus = async (isInitialLoad = false) => {
         log(PAGE_SOURCE, 'Проверка статуса...');
         try {
             const { data, error } = await service.getMemberById(memberId);
+
+            // Если участника удалили, но очередь еще есть
             if (!data && error) {
                  const { data: queueData } = await service.getQueueById(queueId);
                  if (queueData) {
@@ -116,10 +116,13 @@ function WaitPage() {
                     throw new Error('Вас удалили из этой очереди.');
                  }
             }
+
+            // Если удалили и участника, и очередь
             if (error || !data || !data.queues) {
                 clearActiveSession();
-                throw new Error('Очередь, в которой вы находились, была удалена.');
+                throw new Error('Очередь, в которой вы находились, была удалена администратором.');
             }
+            
             setMyInfo(data);
             setQueueInfo(data.queues);
             const { count } = await service.getWaitingMembersCount(queueId, data.ticket_number);
@@ -132,27 +135,40 @@ function WaitPage() {
         }
     };
 
+    // --- НАЧАЛО ИЗМЕНЕНИЙ ---
     useEffect(() => {
         const handleRealtimeEvent = (payload) => {
-            log(PAGE_SOURCE, `Получено Realtime ${payload.eventType} событие для всей очереди`);
+            log(PAGE_SOURCE, `Получено Realtime ${payload.eventType} событие для таблицы ${payload.table}`);
             
+            // Если событие - УДАЛЕНИЕ в таблице 'queues'
             if (payload.table === 'queues' && payload.eventType === 'DELETE') {
-                 log(PAGE_SOURCE, 'Очередь удалена.');
+                 log(PAGE_SOURCE, 'Очередь была удалена.');
                  clearActiveSession();
                  setStatus('error');
                  setErrorMessage('Эта очередь была удалена администратором.');
-                 service.removeSubscription(`wait-page-members-${queueId}`);
-                 service.removeSubscription(`wait-page-queue-${queueId}`);
-                 return;
+                 // Отписываемся от каналов, так как они больше не нужны
+                 service.removeSubscription(memberChannel);
+                 service.removeSubscription(queueChannel);
+                 return; // Прекращаем дальнейшую обработку
             }
 
-            if (payload.table === 'queue_members') {
-                checkMyStatus();
-            }
+            // Для всех остальных событий просто проверяем статус
+            checkMyStatus();
         };
 
-        const memberChannel = service.subscribe(`wait-page-members-${queueId}`, { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queueId}` }, handleRealtimeEvent);
-        const queueChannel = service.subscribe(`wait-page-queue-${queueId}`, { event: 'DELETE', schema: 'public', table: 'queues', filter: `id=eq.${queueId}`}, handleRealtimeEvent);
+        // Канал 1: Отслеживает изменения участников
+        const memberChannel = service.subscribe(
+            `wait-page-members-${queueId}`, 
+            { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queueId}` }, 
+            handleRealtimeEvent
+        );
+
+        // Канал 2: Отслеживает УДАЛЕНИЕ самой очереди
+        const queueChannel = service.subscribe(
+            `wait-page-queue-${queueId}`, 
+            { event: 'DELETE', schema: 'public', table: 'queues', filter: `id=eq.${queueId}`}, 
+            handleRealtimeEvent
+        );
         
         const handlePageShow = (event) => {
             if (event.persisted) {
@@ -168,15 +184,20 @@ function WaitPage() {
 
         window.addEventListener('pageshow', handlePageShow);
         document.addEventListener('visibilitychange', handleVisibilityChange);
-        checkMyStatus();
+        
+        // Первоначальная загрузка данных
+        checkMyStatus(true);
 
+        // Функция отписки при размонтировании компонента
         return () => {
             service.removeSubscription(memberChannel);
             service.removeSubscription(queueChannel);
             window.removeEventListener('pageshow', handlePageShow);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [memberId, queueId]);
+    // --- КОНЕЦ ИЗМЕНЕНИЙ ---
 
     useEffect(() => {
         if (myInfo) {
@@ -190,6 +211,7 @@ function WaitPage() {
                         body: `Вас вызывают${windowText}. Ваш код: ${myInfo.display_code}`,
                         icon: '/vite.svg',
                         tag: `queue-notification-${queueId}`,
+                        renotify: true
                     });
                 }
             }
@@ -211,7 +233,16 @@ function WaitPage() {
     }, [myInfo, notificationPermission, queueInfo, queueId, isSimpleMode]);
     
     if (status === 'loading') return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spinner /></div>;
-    if (status === 'error') return <div className={`container ${styles.errorContainer}`}>{errorMessage}</div>;
+    
+    // --- ИЗМЕНЕНИЕ: Контейнер с ошибкой теперь более заметен ---
+    if (status === 'error') return (
+        <div className={`container ${styles.pageContainer}`}>
+            <div className={styles.errorContainer}>
+                {errorMessage}
+            </div>
+        </div>
+    );
+    // --- КОНЕЦ ИЗМЕНЕНИЯ ---
     
     return (
         <div className={`container ${styles.pageContainer}`}>
@@ -259,7 +290,7 @@ function WaitPage() {
 
                 {myInfo?.status === 'serviced' && (<div className={`${styles.statusBox} ${styles.statusServiced}`}><h2>Ваше обслуживание завершено.</h2></div>)}
                 
-                {(myInfo?.status === 'waiting') && (
+                {(myInfo?.status === 'waiting' || myInfo?.status === 'acknowledged') && (
                     <Button onClick={handleLeaveQueue} isLoading={isLeaving} className={styles.leaveButton}>
                         Выйти из очереди
                     </Button>

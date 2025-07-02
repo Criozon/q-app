@@ -13,15 +13,14 @@ function PrintPage() {
     useEffect(() => {
         const generateQR = async () => {
             try {
-                // --- НАЧАЛО ИЗМЕНЕНИЙ: Сначала получаем данные об очереди ---
                 const { data, error } = await service.getQueueById(queueId);
                 if (error) throw error;
                 
                 setQueueName(data.name);
                 
-                // Используем short_id для генерации URL
+                // --- ИЗМЕНЕНИЕ: Убираем /#/ из URL ---
                 const joinUrl = `${window.location.origin}/join/${data.short_id}`;
-                // --- КОНЕЦ ИЗМЕНЕНИЙ ---
+                // --- КОНЕЦ ИЗМЕНЕНИЯ ---
                 
                 const qrUrl = await QRCode.toDataURL(joinUrl, { width: 500, margin: 2 });
                 setQrCodeUrl(qrUrl);

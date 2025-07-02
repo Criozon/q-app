@@ -20,31 +20,22 @@ function App() {
 
       <Router>
         <Routes>
-          {/* Маршруты для клиента */}
           <Route path="/" element={<HomePage />} />
           <Route path="/join/:shortId" element={<JoinPage />} />
           <Route path="/wait/:queueId/:memberId" element={<WaitPage />} />
           <Route path="/print/:queueId" element={<PrintPage />} />
           
-          {/* Маршрут для Мастер-Администратора */}
           <Route 
             path="/admin/:secretKey" 
-            element={
-              <QueueProvider>
-                <AdminPage />
-              </QueueProvider>
-            } 
+            element={ <QueueProvider> <AdminPage /> </QueueProvider> } 
           />
 
-          {/* Маршрут для Администратора Окна */}
+          {/* --- ИЗМЕНЕНИЕ: Роут теперь использует :shortKey --- */}
           <Route
-            path="/window-admin/:windowSecretKey"
-            element={
-              <WindowAdminProvider>
-                <WindowAdminPage />
-              </WindowAdminProvider>
-            }
+            path="/window-admin/:shortKey"
+            element={ <WindowAdminProvider> <WindowAdminPage /> </WindowAdminProvider> }
           />
+          {/* --- КОНЕЦ ИЗМЕНЕНИЯ --- */}
         </Routes>
       </Router>
     </>

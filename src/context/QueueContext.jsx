@@ -19,6 +19,9 @@ export function QueueProvider({ children }) {
   const [joinUrl, setJoinUrl] = useState('');
 
   const loadQueueData = useCallback(async (isInitialLoad = false) => {
+    if (!secretKey) {
+        return;
+    }
     if (isInitialLoad) setError(null);
     try {
       const { data: qData, error: qError } = await service.getQueueBySecret(secretKey);
@@ -39,7 +42,7 @@ export function QueueProvider({ children }) {
       setServices(servicesRes.data || []);
 
       if (!joinUrl) {
-          // --- НАЧАЛО ИЗМЕНЕНИЯ: Используем short_id ---
+          // --- ИЗМЕНЕНИЕ: Убираем /#/ из URL ---
           const currentJoinUrl = `${window.location.origin}/join/${qData.short_id}`;
           // --- КОНЕЦ ИЗМЕНЕНИЯ ---
           setJoinUrl(currentJoinUrl);

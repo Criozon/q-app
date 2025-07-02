@@ -9,7 +9,7 @@ const PAGE_SOURCE = 'WindowAdminContext';
 const WindowAdminContext = createContext(null);
 
 export function WindowAdminProvider({ children }) {
-    const { windowSecretKey } = useParams();
+    const { shortKey } = useParams();
     const [windowInfo, setWindowInfo] = useState(null);
     const [queueInfo, setQueueInfo] = useState(null);
     const [members, setMembers] = useState([]);
@@ -19,98 +19,90 @@ export function WindowAdminProvider({ children }) {
     const [joinUrl, setJoinUrl] = useState('');
     const [qrCodeUrl, setQrCodeUrl] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isQueueDeleted, setIsQueueDeleted] = useState(false);
 
-    const loadInitialData = useCallback(async () => {
-        setError(null);
+    // --- НАЧАЛО ИЗМЕНЕНИЯ: Упрощенная функция загрузки ---
+    const loadInitialData = useCallback(async (isInitialLoad = true) => {
+        if (isInitialLoad) {
+            setLoading(true);
+            setError(null);
+        }
         try {
-            const { data: wData, error: wError } = await service.getWindowBySecretKey(windowSecretKey);
-            if (wError || !wData || !wData.queues) throw new Error("Панель управления не найдена.");
+            // Один запрос вместо нескольких!
+            const { data, error: rpcError } = await service.getWindowAdminInitialData(shortKey);
+            if (rpcError) throw rpcError;
             
-            const currentWindowInfo = { id: wData.id, name: wData.name, queue_id: wData.queue_id };
-            setWindowInfo(currentWindowInfo);
-            setQueueInfo(wData.queues);
+            const { windowInfo: wData, queueInfo: qData, members: mData } = data;
+
+            if (!wData) throw new Error("Панель управления не найдена. Неверный ключ доступа.");
             
-            const { data: mData, error: mError } = await service.getMembersForWindow(currentWindowInfo.id, currentWindowInfo.queue_id);
-            if (mError) throw new Error("Не удалось загрузить список участников.");
+            if (!qData) {
+                setWindowInfo(wData);
+                setQueueInfo(null);
+                setMembers([]);
+                setIsQueueDeleted(true);
+                if (isInitialLoad) setLoading(false);
+                return;
+            }
+
+            setWindowInfo(wData);
+            setQueueInfo(qData);
             setMembers(mData || []);
             
-            if (!joinUrl) {
-                const clientJoinUrl = `${window.location.origin}/join/${wData.queue_id}`;
+            if (!joinUrl && qData) {
+                const clientJoinUrl = `${window.location.origin}/join/${qData.short_id}`;
                 setJoinUrl(clientJoinUrl);
                 const qrUrl = await QRCode.toDataURL(clientJoinUrl);
                 setQrCodeUrl(qrUrl);
             }
         } catch (err) {
             log(PAGE_SOURCE, 'Ошибка при загрузке:', err);
-            setError(err.message || 'Произошла неизвестная ошибка');
+            if (isInitialLoad) setError(err.message || 'Произошла неизвестная ошибка');
         } finally {
-            setLoading(false);
+            if (isInitialLoad) setLoading(false);
         }
-    }, [windowSecretKey, joinUrl]);
+    }, [shortKey, joinUrl]);
+    // --- КОНЕЦ ИЗМЕНЕНИЯ ---
     
-    useEffect(() => { loadInitialData(); }, [loadInitialData]);
+    useEffect(() => { loadInitialData(true); }, [loadInitialData]);
     
     useEffect(() => {
-        if (!queueInfo || !windowInfo) return;
-        const handleRealtimeEvent = () => {
-            log(PAGE_SOURCE, `Получено Realtime событие, обновляем список участников`);
-            service.getMembersForWindow(windowInfo.id, queueInfo.id).then(({ data, error }) => {
-                if (error) {
-                    log(PAGE_SOURCE, 'Ошибка при обновлении списка участников по Realtime:', error);
-                    return;
-                }
-                setMembers(data || []);
-            });
+        if (!queueInfo || !windowInfo || isQueueDeleted) return;
+
+        const handleRealtimeEvent = (payload) => {
+            log(PAGE_SOURCE, `Получено Realtime событие (${payload.table}), тип: ${payload.eventType}.`);
+            if (payload.table === 'queues' && payload.eventType === 'DELETE' && payload.old.id === queueInfo.id) {
+                log(PAGE_SOURCE, 'Обнаружено удаление очереди! Обновляем UI.');
+                setIsQueueDeleted(true);
+                service.removeSubscription(memberChannel);
+                service.removeSubscription(queueChannel);
+                service.removeSubscription(servicesChannel);
+                return;
+            }
+            loadInitialData(false);
         };
+
         const memberChannel = service.subscribe(`window-admin-members-${queueInfo.id}`, { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queueInfo.id}` }, handleRealtimeEvent);
-        const queueChannel = service.subscribe(`window-admin-queue-${queueInfo.id}`, { event: '*', schema: 'public', table: 'queues', filter: `id=eq.${queueInfo.id}` }, (payload) => {
-            log(PAGE_SOURCE, `Realtime (Очередь): ${payload.eventType}`);
-            setQueueInfo(payload.new);
-            if (payload.eventType === 'DELETE') setError('Эта очередь была удалена главным администратором.');
-        });
+        const queueChannel = service.subscribe(`window-admin-queue-${queueInfo.id}`, { event: '*', schema: 'public', table: 'queues', filter: `id=eq.${queueInfo.id}`}, handleRealtimeEvent);
+        const servicesChannel = service.subscribe(`window-admin-services-${queueInfo.id}`, { event: '*', schema: 'public', table: 'window_services' }, handleRealtimeEvent);
+
         return () => {
             service.removeSubscription(memberChannel);
             service.removeSubscription(queueChannel);
+            service.removeSubscription(servicesChannel);
         };
-    }, [queueInfo, windowInfo]);
+    }, [queueInfo, windowInfo, isQueueDeleted, loadInitialData]);
 
-    const callNext = useCallback(async () => {
-        if (!windowInfo) return;
-        setIsProcessing(true);
-        const { error } = await service.callNextMemberToWindow(windowInfo.id);
-        if (error) toast.error("Не удалось вызвать участника.");
-        setIsProcessing(false);
-    }, [windowInfo]);
-
-    const callSpecific = useCallback(async (memberId) => {
-        if (members.some(m => m.assigned_window_id === windowInfo.id && (m.status === 'called' || m.status === 'acknowledged'))) {
-             toast.error('Завершите текущее обслуживание, чтобы вызвать другого участника.');
-             return;
-        }
-        setIsProcessing(true);
-        const { error } = await service.callSpecificMember(memberId, windowInfo.id);
-        if (error) toast.error("Не удалось вызвать этого участника.");
-        setIsProcessing(false);
-    }, [windowInfo, members]);
-
-    const completeService = useCallback(async (memberId) => {
-        setIsProcessing(true);
-        await service.updateMemberStatus(memberId, 'serviced');
-        setIsProcessing(false);
-    }, []);
-
-    const returnToQueue = useCallback(async (memberId) => {
-        setIsProcessing(true);
-        await service.returnMemberToWaiting(memberId);
-        setIsProcessing(false);
-    }, []);
+    const callNext = useCallback(async () => { if (!windowInfo || !queueInfo) return; setIsProcessing(true); try { await service.callNextMemberToWindow(windowInfo.id); } catch (error) { toast.error("Не удалось вызвать участника."); } finally { setIsProcessing(false); } }, [windowInfo, queueInfo]);
+    const callSpecific = useCallback(async (memberId, assignedMember) => { if (assignedMember) { toast.error('Завершите текущее обслуживание, чтобы вызвать другого участника.'); return; } setIsProcessing(true); try { await service.callSpecificMember(memberId, windowInfo.id); } catch(error) { toast.error("Не удалось вызвать этого участника."); } finally { setIsProcessing(false); } }, [windowInfo]);
+    const completeService = useCallback(async (memberId) => { setIsProcessing(true); try { await service.updateMemberStatus(memberId, 'serviced'); } finally { setIsProcessing(false); } }, []);
+    const returnToQueue = useCallback(async (memberId) => { setIsProcessing(true); try { await service.returnMemberToWaiting(memberId); } finally { setIsProcessing(false); } }, []);
     
     const assignedMember = useMemo(() => members.find(m => m.assigned_window_id === windowInfo?.id && (m.status === 'called' || m.status === 'acknowledged')), [members, windowInfo]);
-    const waitingMembers = useMemo(() => members.filter(m => m.status === 'waiting'), [members]);
     
     const value = useMemo(() => ({ 
-        windowInfo, queueInfo, members, assignedMember, waitingMembers, loading, error, isProcessing, isJoinModalOpen, joinUrl, qrCodeUrl, setIsJoinModalOpen, callNext, callSpecific, completeService, returnToQueue 
-    }), [windowInfo, queueInfo, members, assignedMember, waitingMembers, loading, error, isProcessing, isJoinModalOpen, joinUrl, qrCodeUrl, callNext, callSpecific, completeService, returnToQueue, setIsJoinModalOpen]);
+        windowInfo, queueInfo, members, assignedMember, loading, error, isProcessing, isJoinModalOpen, joinUrl, qrCodeUrl, isQueueDeleted, setIsJoinModalOpen, loadInitialData, callNext, callSpecific, completeService, returnToQueue 
+    }), [windowInfo, queueInfo, members, assignedMember, loading, error, isProcessing, isJoinModalOpen, joinUrl, qrCodeUrl, isQueueDeleted, loadInitialData, callNext, callSpecific, completeService, returnToQueue]);
     
     return (<WindowAdminContext.Provider value={value}>{children}</WindowAdminContext.Provider>);
 }

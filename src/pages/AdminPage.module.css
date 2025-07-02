@@ -49,23 +49,22 @@
   gap: 6px;
 }
 
-.headerPlaceholder, .adminMenuContainer, .headerActions {
-    width: 88px;
+.leftActions, .rightActions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 120px;
 }
 
-.adminMenuContainer {
-    position: relative;
-    display: flex;
+.leftActions {
     justify-content: flex-start;
 }
 
-.headerActions {
-    display: flex;
+.rightActions {
     justify-content: flex-end;
-    gap: 0;
 }
 
-.menuButton, .controlButton {
+.controlButton {
   background: none;
   border: none;
   padding: 0;
@@ -79,51 +78,18 @@
   transition: background-color 0.2s ease;
 }
 
-.menuButton:hover, .controlButton:hover {
+.controlButton:hover {
   background-color: #f0f2f5;
 }
 
-.dropdownMenu {
-  position: absolute;
-  top: calc(100% + 5px);
-  left: 0;
-  background-color: var(--card-background);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  z-index: 20;
-  width: 220px;
-  padding: 8px;
-  overflow: hidden;
-}
-
-.dropdownMenuItem {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px;
-  border: none;
-  background: none;
-  text-align: left;
-  font-size: 15px;
-  font-weight: 500;
-  cursor: pointer;
-  border-radius: 6px;
-  transition: background-color 0.2s ease;
-}
-
-.dropdownMenuItemDelete {
-  color: var(--accent-red);
-}
-
-.dropdownMenuItemDelete:hover {
-  background-color: #fcebeb;
+.deleteButton {
+    color: var(--accent-red) !important;
 }
 
 .mainContent {
   flex: 1;
-  padding: 16px 0 120px 0;
+  padding-top: 16px;
+  padding-bottom: 120px;
 }
 
 .windowsList {
@@ -170,6 +136,7 @@
     font-weight: 500;
 }
 
+/* --- НАЧАЛО ИЗМЕНЕНИЙ --- */
 .copyButton {
     position: absolute;
     top: 50%;
@@ -180,14 +147,15 @@
     background-color: #e5e5e5 !important;
     color: var(--text-primary) !important;
     z-index: 5;
+    /* Добавляем плавную анимацию для ВСЕХ изменений: ширины, цвета, фона */
+    transition: all 0.2s ease-in-out; 
 }
 
-.windowsHelpText {
-    margin-top: 16px;
-    color: var(--text-secondary);
-    text-align: center;
-    font-size: 14px;
+.copyButton:active {
+    /* Применяем оба transform для корректного эффекта нажатия */
+    transform: translateY(-50%) scale(0.98);
 }
+/* --- КОНЕЦ ИЗМЕНЕНИЙ --- */
 
 .memberList {
   display: flex;
@@ -212,7 +180,6 @@
   border-left-color: var(--accent-blue);
   background-color: #e3f2fd; 
 }
-
 
 .memberCard.serviced {
   opacity: 0.4;
@@ -304,7 +271,6 @@
     width: auto;
 }
 
-/* --- НАЧАЛО ИЗМЕНЕНИЙ --- */
 .modalContent {
   text-align: center;
   display: flex;
@@ -319,7 +285,6 @@
   margin: 0 0 16px 0;
   max-width: 350px;
 }
-/* --- КОНЕЦ ИЗМЕНЕНИЙ --- */
 
 .qrImage {
   width: 100%;
@@ -382,4 +347,35 @@
   width: auto;
   flex-grow: 0;
   flex-shrink: 0;
+}
+
+.settingsGridInModal {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 600px;
+}
+
+.addServiceForm {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.addServiceForm > div { flex-grow: 1; }
+.addServiceForm button { width: 50px; padding: 0 !important; flex-shrink: 0; }
+
+.serviceEditorList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 50vh; 
+  overflow-y: auto;
+  padding: 4px;
+  margin: -4px;
+}
+
+.saveSettingsButton {
+    margin-top: 8px;
 }

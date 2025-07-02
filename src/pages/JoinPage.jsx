@@ -24,85 +24,74 @@ function JoinPage() {
     const [error, setError] = useState('');
     const [currentActiveSession, setCurrentActiveSession] = useState(null);
 
-    log(`--- JoinPage РЕНДЕР --- shortId из URL: ${shortId}`);
-
     useEffect(() => {
-        log(`--- JoinPage ЭФФЕКТ --- Запускается для shortId: ${shortId}`);
-        
-        if (!shortId) {
-            log('ЭФФЕКТ: shortId пустой, выходим.');
-            return;
-        }
-
         const loadPageData = async () => {
-            log('1. loadPageData: Начало загрузки.');
             setIsLoading(true);
             setError('');
             try {
-                log('2. loadPageData: Внутри try, ищем очередь...');
                 const { data: queueData, error: queueError } = await service.getQueueByShortId(shortId);
-                log('3. loadPageData: Ответ от getQueueByShortId', { queueData, queueError });
-
                 if (queueError || !queueData) {
                     throw new Error('Очередь не найдена или была удалена.');
                 }
                 
-                log('4. loadPageData: Очередь найдена, получаем детали...');
-                const { data: pageData, error: pageError } = await service.getQueueDetailsForJoining(queueData.id);
-                log('5. loadPageData: Ответ от getQueueDetailsForJoining', { pageData, pageError });
+                // --- НАЧАЛО ИСПРАВЛЕНИЯ: Правильно обрабатываем ответ от сервера ---
+                // 1. Сначала получаем весь ответ
+                const { data: detailsData, error: detailsError } = await service.getQueueDetailsForJoining(queueData.id);
+
+                // 2. Проверяем на ошибку
+                if (detailsError) {
+                    throw detailsError;
+                }
                 
-                if (pageError || !pageData || !pageData.queue) {
+                // 3. Извлекаем данные из свойства data
+                const { queue: detailsQueue, services: detailsServices } = detailsData;
+
+                // 4. Проверяем, что данные действительно пришли
+                if (!detailsQueue) {
                     throw new Error('Не удалось загрузить детали очереди.');
                 }
                 
-                log('6. loadPageData: Устанавливаем состояние queue и services.');
-                setQueue(pageData.queue);
-                setServices(pageData.services || []);
+                setQueue(detailsQueue);
+                setServices(detailsServices || []);
+                // --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
-                log('7. loadPageData: Проверяем активную сессию в localStorage.');
                 const session = getActiveSession();
                 if (session) {
-                    log('8. loadPageData: Сессия найдена, проверяем валидность участника...');
                     const { data: memberData } = await service.getMemberById(session.memberId);
                     if (memberData && ['waiting', 'called', 'acknowledged'].includes(memberData.status)) {
                         if (session.queueId === queueData.id) {
-                            log('9. loadPageData: Валидная сессия для текущей очереди, показываем окно.');
                             setCurrentActiveSession(session);
                         }
                     } else {
-                        log('9. loadPageData: Сессия невалидна, очищаем.');
                         clearActiveSession();
                     }
                 }
             } catch (err) { 
                 log('!!! КРИТИЧЕСКАЯ ОШИБКА в loadPageData:', err);
-                setError(err.message); 
+                setError(err.message || 'Не удалось загрузить данные. Попробуйте обновить страницу.'); 
             } finally { 
-                log('10. loadPageData: Блок finally, выключаем загрузку.');
                 setIsLoading(false); 
             }
         };
         
-        loadPageData();
+        if (shortId) {
+            loadPageData();
+        }
     }, [shortId]);
 
     useEffect(() => {
         if (!queue) return;
-        log(`--- JoinPage ЭФФЕКТ (Realtime) --- Подписка на очередь ID: ${queue.id}`);
         const channel = service.subscribe(`join-page-queue-status-${queue.id}`, {
             event: 'UPDATE', schema: 'public', table: 'queues', filter: `id=eq.${queue.id}`
         }, (payload) => {
-            log('Realtime: Получен новый статус очереди', payload.new.status);
             setQueue(prevQueue => ({ ...prevQueue, ...payload.new }));
         });
         return () => {
-            log(`--- JoinPage ЭФФЕКТ (Realtime) --- Отписка от очереди ID: ${queue.id}`);
             service.removeSubscription(channel);
         };
     }, [queue]);
 
     const handleJoinQueue = async () => {
-        // ... (остальной код без изменений)
         if (!memberName.trim()) { toast.error('Пожалуйста, введите ваше имя.'); return; }
         if (services.length > 0 && !selectedServiceId) { toast.error('Пожалуйста, выберите услугу.'); return; }
         setIsJoining(true);
@@ -138,20 +127,15 @@ function JoinPage() {
         toast.success('Теперь вы можете войти как новый участник.');
     };
     
-    log('--- Состояние перед рендером ---', { isLoading, error, currentActiveSession, hasQueue: !!queue });
-
     if (isLoading) {
-        log('Рендерим: <Spinner />');
         return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spinner /></div>;
     }
     
     if (error) {
-        log(`Рендерим: Ошибка - "${error}"`);
         return <div className={`container ${styles.errorText}`}>{error}</div>;
     }
     
     if (currentActiveSession) {
-        log('Рендерим: Компонент для активной сессии');
         return (
             <div className={`container ${styles.pageContainer}`}>
                 <div className={styles.header}>
@@ -168,7 +152,6 @@ function JoinPage() {
         );
     }
 
-    log('Рендерим: Основная форма регистрации');
     const canJoin = !isJoining && memberName.trim() && (services.length === 0 || !!selectedServiceId);
     return (
         <div className={`container ${styles.pageContainer}`}>

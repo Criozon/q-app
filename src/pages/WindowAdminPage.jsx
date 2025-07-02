@@ -13,19 +13,15 @@ import styles from './WindowAdminPage.module.css';
 
 function WindowAdminPage() {
     const {
-        windowInfo, queueInfo, members, loading, error, isProcessing, 
+        windowInfo, queueInfo, members, assignedMember, loading, error, isProcessing,
         isJoinModalOpen, joinUrl, qrCodeUrl, setIsJoinModalOpen,
-        callNext, callSpecific, completeService, returnToQueue
+        callNext, callSpecific, completeService, returnToQueue,
+        isQueueDeleted
     } = useWindowAdmin();
 
     const [copied, setCopied] = useState(false);
     const [confirmation, setConfirmation] = useState({ isOpen: false });
     const listRef = useRef(null);
-
-    const assignedMember = useMemo(() => 
-        members.find(m => m.assigned_window_id === windowInfo?.id && (m.status === 'called' || m.status === 'acknowledged')), 
-        [members, windowInfo]
-    );
     
     const waitingMembers = useMemo(() => members.filter(m => m.status === 'waiting'), [members]);
     const waitingMembersCount = waitingMembers.length;
@@ -77,7 +73,25 @@ function WindowAdminPage() {
     }, []);
     
     if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spinner /></div>;
-    if (error) return <div className={`container ${styles.errorContainer}`}>{error}</div>;
+    
+    if (error) return (
+        <div className={`container ${styles.pageWrapper}`} style={{paddingTop: '60px'}}>
+             <div className={styles.errorContainer}>{error}</div>
+        </div>
+    );
+
+    if (isQueueDeleted) {
+        return (
+            <div className={styles.pageWrapper}>
+                <div className={`container ${styles.mainContent}`}>
+                    <div className={styles.emptyState}>
+                        <h3 className={styles.emptyStateTitle}>Очередь была удалена</h3>
+                        <p className={styles.emptyStateText}>Мастер-администратор удалил очередь, к которой была привязана эта панель.</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     const assignedMemberCardClasses = assignedMember ? [
         styles.memberCard,
@@ -94,15 +108,19 @@ function WindowAdminPage() {
                     <div className={styles.headerPlaceholder}></div>
                     <div className={styles.headerCenter}>
                         <h1 className={styles.headerTitle}>{windowInfo?.name}</h1>
-                        <div className={styles.queueCount}>
-                            <div className={`${styles.statusIndicator} ${queueInfo?.status === 'paused' ? styles.statusIndicatorPaused : ''}`}></div>
-                            <span>В очереди: {waitingMembersCount}</span>
-                        </div>
+                        {queueInfo && (
+                            <div className={styles.queueCount}>
+                                <div className={`${styles.statusIndicator} ${queueInfo?.status === 'paused' ? styles.statusIndicatorPaused : ''}`}></div>
+                                <span>В очереди: {waitingMembersCount}</span>
+                            </div>
+                        )}
                     </div>
                     <div className={styles.headerActions}>
-                        <button onClick={() => setIsJoinModalOpen(true)} className={styles.controlButton} title="Показать QR-код для входа">
-                            <QrCode size={24} color="var(--accent-blue)" />
-                        </button>
+                        {queueInfo && (
+                            <button onClick={() => setIsJoinModalOpen(true)} className={styles.controlButton} title="Показать QR-код для входа">
+                                <QrCode size={24} color="var(--accent-blue)" />
+                            </button>
+                        )}
                     </div>
                 </div>
             </header>
@@ -116,9 +134,20 @@ function WindowAdminPage() {
                                 {assignedMember.service_name && (<p className={styles.memberService}>{assignedMember.service_name}</p>)}
                                 <p className={styles.memberStatus}>{getStatusText(assignedMember.status)}</p>
                             </div>
+                            {/* --- НАЧАЛО ИЗМЕНЕНИЙ: Добавляем блок с кнопкой удаления --- */}
+                            <div className={styles.memberActions}>
+                                <Button
+                                    onClick={() => handleRemoveMember(assignedMember)}
+                                    className={`${styles.actionButton} ${styles.removeButton}`}
+                                    title="Удалить участника"
+                                >
+                                    <UserX size={20} />
+                                </Button>
+                            </div>
+                            {/* --- КОНЕЦ ИЗМЕНЕНИЙ --- */}
                         </Card>
                     )}
-
+                    
                     <div className={styles.memberList} ref={listRef}>
                         {members.filter(member => member.id !== assignedMember?.id).map(member => {
                             const isThisWindowAssigned = member.assigned_window_id === windowInfo?.id;
@@ -138,7 +167,7 @@ function WindowAdminPage() {
                                     </div>
                                     <div className={styles.memberActions}>
                                         {member.status === 'waiting' && (
-                                            <Button onClick={() => callSpecific(member.id)} disabled={!!assignedMember || isProcessing} className={`${styles.actionButton} ${styles.callButton}`} title="Вызвать этого участника"><PhoneCall size={20} /></Button>
+                                            <Button onClick={() => callSpecific(member.id, assignedMember)} disabled={isProcessing} className={`${styles.actionButton} ${styles.callButton}`} title="Вызвать этого участника"><PhoneCall size={20} /></Button>
                                         )}
                                         <Button onClick={() => handleRemoveMember(member)} className={`${styles.actionButton} ${styles.removeButton}`} title="Удалить участника"><UserX size={20} /></Button>
                                     </div>
@@ -146,24 +175,13 @@ function WindowAdminPage() {
                             )
                         })}
                         
-                        {/* --- НАЧАЛО ИЗМЕНЕНИЙ: Обновленный блок для пустого состояния --- */}
                         {members.length === 0 && (
                             <div className={styles.emptyState}>
                                 <Users size={48} className={styles.emptyStateIcon} />
                                 <h3 className={styles.emptyStateTitle}>В очереди пока никого нет</h3>
-                                <p className={styles.emptyStateText}>
-                                    Поделитесь QR-кодом или ссылкой, чтобы люди могли присоединиться.
-                                </p>
-                                <Button 
-                                    onClick={() => setIsJoinModalOpen(true)} 
-                                    className={styles.emptyStateButton}
-                                >
-                                    <QrCode size={18} />
-                                    Показать QR-код
-                                </Button>
+                                <p className={styles.emptyStateText}>Нажмите на иконку QR-кода вверху, чтобы показать клиенту код для входа.</p>
                             </div>
                         )}
-                        {/* --- КОНЕЦ ИЗМЕНЕНИЙ --- */}
                     </div>
                 </div>
             </main>
@@ -190,7 +208,14 @@ function WindowAdminPage() {
                 </div>
             </Modal>
 
-            <ConfirmationModal isOpen={confirmation.isOpen} onClose={() => setConfirmation({ ...confirmation, isOpen: false })} onConfirm={confirmation.onConfirm} title={confirmation.title} confirmText={confirmation.confirmText} isDestructive={confirmation.isDestructive}>
+            <ConfirmationModal 
+                isOpen={confirmation.isOpen} 
+                onClose={() => setConfirmation({ ...confirmation, isOpen: false })} 
+                onConfirm={confirmation.onConfirm} 
+                title={confirmation.title} 
+                confirmText={confirmation.confirmText} 
+                isDestructive={confirmation.isDestructive}
+            >
                 {confirmation.message}
             </ConfirmationModal>
         </div>

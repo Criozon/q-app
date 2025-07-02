@@ -13,9 +13,7 @@ import Input from '../components/Input';
 import NumberStepper from '../components/NumberStepper';
 import ServiceRow from '../components/ServiceRow';
 import log from '../utils/logger';
-// --- НАЧАЛО ИСПРАВЛЕНИЯ: Корректный синтаксис импорта ---
 import * as service from '../services/supabaseService';
-// --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 import { useMyQueues } from '../hooks/useMyQueues';
 import { getActiveSession, clearActiveSession } from '../utils/session';
 
@@ -45,34 +43,54 @@ function HomePage() {
     const checkSession = async () => {
       const session = getActiveSession();
       if (session) {
-        const { data: memberData } = await service.getMemberById(session.memberId);
-        
-        if (memberData && ['waiting', 'called', 'acknowledged'].includes(memberData.status)) {
-          setConfirmation({
-            isOpen: true,
-            title: "Обнаружена активная сессия",
-            message: <p>Вы уже находитесь в очереди <strong>"{memberData.queues.name}"</strong>. Вы можете вернуться к ней или проигнорировать и продолжить работу здесь.</p>,
-            confirmText: "Вернуться к сессии",
-            cancelText: "Продолжить здесь",
-            isDestructive: false,
-            onConfirm: () => {
-              const path = memberData.windows?.admin_secret_key
-                  ? `/window-admin/${memberData.windows.admin_secret_key}`
-                  : `/wait/${session.queueId}/${session.memberId}`;
-              navigate(path);
-            },
-            onCancelAction: () => {
-              setConfirmation({ isOpen: false });
+        try {
+            const { data: memberData } = await service.getMemberById(session.memberId);
+            
+            // Если участника нет (или обслужили), просто чистим сессию
+            if (!memberData || memberData.status === 'serviced') {
+              clearActiveSession();
+              return;
             }
-          });
-        } else {
-          clearActiveSession();
+
+            // Если он все еще в очереди, показываем диалог
+            if (['waiting', 'called', 'acknowledged'].includes(memberData.status)) {
+              setConfirmation({
+                isOpen: true,
+                title: `Вы уже в очереди "${memberData.queues.name}"`,
+                message: <p>Похоже, вы не вышли из своей предыдущей очереди. Что вы хотите сделать?</p>,
+                confirmText: "Вернуться в очередь",
+                cancelText: "Покинуть старую очередь",
+                isDestructive: false,
+                onConfirm: () => {
+                  navigate(`/wait/${session.queueId}/${session.memberId}`);
+                },
+                onCancelAction: () => {
+                    const toastId = toast.loading('Выходим из предыдущей очереди...');
+                    service.deleteMember(session.memberId).then(({error}) => {
+                        if (error) {
+                            toast.error('Не удалось выйти из очереди.', { id: toastId });
+                        } else {
+                            toast.success('Вы успешно покинули очередь.', { id: toastId });
+                        }
+                        clearActiveSession();
+                        setConfirmation({ isOpen: false });
+                    });
+                }
+              });
+            }
+        } catch (err) {
+            // Если при проверке сессии произошла ЛЮБАЯ ошибка,
+            // это значит, что сессия невалидна. Просто чистим ее и идем дальше.
+            log('HomePage', 'Ошибка при проверке сессии, сессия будет очищена:', err);
+            clearActiveSession();
         }
       }
     };
-
+    // Eslint-disable-next-line для navigate добавлен, т.к. он стабилен и не требует включения в массив зависимостей
+    // eslint-disable-next-line
     checkSession();
   }, [navigate]);
+
 
   const handleAddService = () => {
     setServices(prevServices => [...prevServices, { id: uuidv4(), name: '', window_indices: [] }]);
@@ -98,24 +116,21 @@ function HomePage() {
       toast.error('Пожалуйста, введите название очереди.');
       return;
     }
-
+    
     const validServices = services
         .filter(s => s.name.trim() !== '')
-        .map(s => {
-            const windowIndices = s.window_indices.length > 0 ? s.window_indices : Array.from({ length: windowCount }, (_, i) => i + 1);
-            return {
-                name: s.name.trim(),
-                window_indices: windowIndices
-            }
-        });
+        .map(s => ({
+            name: s.name.trim(),
+            window_indices: s.window_indices || []
+        }));
     
     setIsLoading(true);
     const toastId = toast.loading('Создаем очередь...');
 
     try {
       const { data, error } = await service.createQueue({
-          name: queueName,
-          description: queueDescription,
+          name: queueName.trim(),
+          description: queueDescription.trim(),
           window_count: windowCount,
           services_payload: validServices
       });
@@ -123,14 +138,20 @@ function HomePage() {
       if (error) throw error;
       
       toast.success('Очередь успешно создана!', { id: toastId });
-      const newQueue = data;
+      
+      const newQueue = data[0]; 
+
+      if (!newQueue || !newQueue.admin_secret_key) {
+        throw new Error("Сервер не вернул данные о созданной очереди.");
+      }
+
       setMyQueues([newQueue, ...myQueues]);
       
       navigate(`/admin/${newQueue.admin_secret_key}`, { state: { fromCreation: true } });
 
     } catch (error) {
         log('HomePage', 'Ошибка при создании очереди:', error);
-        toast.error('Не удалось создать очередь.', { id: toastId });
+        toast.error(`Не удалось создать очередь. ${error.message}`, { id: toastId });
     } finally {
       setIsLoading(false);
     }
@@ -150,8 +171,7 @@ function HomePage() {
               setMyQueues(updatedQueues);
               
               const toastId = toast.loading(`Удаляем очередь "${queueToDelete.name}"...`);
-              const performDelete = async () => {
-                  const { error } = await service.deleteQueue(queueToDelete.id);
+              service.deleteQueue(queueToDelete.id).then(({error}) => {
                   toast.dismiss(toastId);
                   if (error) {
                       toast.error(`Не удалось удалить очередь "${queueToDelete.name}".`);
@@ -159,8 +179,7 @@ function HomePage() {
                   } else {
                       toast.success(`Очередь "${queueToDelete.name}" успешно удалена.`);
                   }
-              };
-              performDelete();
+              });
           },
           onCancelAction: () => setConfirmation({ isOpen: false })
       });
@@ -252,7 +271,12 @@ function HomePage() {
 
       <ConfirmationModal 
           isOpen={confirmation.isOpen}
-          onClose={() => setConfirmation({ ...confirmation, isOpen: false })}
+          onClose={() => {
+              if (confirmation.onCancelAction) {
+                  confirmation.onCancelAction();
+              }
+              setConfirmation({ ...confirmation, isOpen: false });
+          }}
           onConfirm={confirmation.onConfirm}
           onCancelAction={confirmation.onCancelAction}
           title={confirmation.title}
