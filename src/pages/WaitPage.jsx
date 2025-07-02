@@ -24,6 +24,7 @@ function WaitPage() {
     const [isLeaving, setIsLeaving] = useState(false);
     const [notificationPermission, setNotificationPermission] = useState(Notification.permission);
     const notificationTriggered = useRef(false);
+    // --- ИЗМЕНЕНИЕ 1/3: Возвращаем useRef для аудио-плеера ---
     const audioPlayer = useRef(null);
     const [confirmation, setConfirmation] = useState({ isOpen: false, title: '', message: null, onConfirm: () => {} });
     
@@ -35,7 +36,7 @@ function WaitPage() {
         myInfo?.status === 'acknowledged' ? styles.acknowledged : '',
         myInfo?.status === 'called' ? 'called-animation' : ''
     ].filter(Boolean).join(' ');
-
+    
     const stopNotificationSound = () => {
         if (audioPlayer.current) {
             audioPlayer.current.pause();
@@ -52,7 +53,6 @@ function WaitPage() {
             toast.success('Администратор уведомлен, что вы идете!', { id: toastId });
         } catch (err) {
             toast.error('Не удалось отправить подтверждение.', { id: toastId });
-            audioPlayer.current?.play().catch(e => log(PAGE_SOURCE, 'Ошибка аудио', e));
         }
     };
 
@@ -107,21 +107,8 @@ function WaitPage() {
         log(PAGE_SOURCE, 'Проверка статуса...');
         try {
             const { data, error } = await service.getMemberById(memberId);
-
-            // Если участника удалили, но очередь еще есть
-            if (!data && error) {
-                 const { data: queueData } = await service.getQueueById(queueId);
-                 if (queueData) {
-                    clearActiveSession();
-                    throw new Error('Вас удалили из этой очереди.');
-                 }
-            }
-
-            // Если удалили и участника, и очередь
-            if (error || !data || !data.queues) {
-                clearActiveSession();
-                throw new Error('Очередь, в которой вы находились, была удалена администратором.');
-            }
+            if (!data && error) { const { data: queueData } = await service.getQueueById(queueId); if (queueData) { clearActiveSession(); throw new Error('Вас удалили из этой очереди.'); } }
+            if (error || !data || !data.queues) { clearActiveSession(); throw new Error('Очередь, в которой вы находились, была удалена администратором.'); }
             
             setMyInfo(data);
             setQueueInfo(data.queues);
@@ -135,45 +122,58 @@ function WaitPage() {
         }
     };
 
-    // --- НАЧАЛО ИЗМЕНЕНИЙ ---
+    // --- ИЗМЕНЕНИЕ 2/3: Добавляем новый useEffect для "разблокировки" звука ---
+    useEffect(() => {
+        // Создаем аудио-элемент при монтировании
+        audioPlayer.current = new Audio('/notification.mp3');
+        audioPlayer.current.loop = true;
+
+        const unlockAudio = () => {
+            log(PAGE_SOURCE, 'Первое взаимодействие с пользователем, "разблокировка" аудио.');
+            audioPlayer.current.play();
+            audioPlayer.current.pause();
+            // Удаляем обработчики после первого же срабатывания
+            window.removeEventListener('click', unlockAudio);
+            window.removeEventListener('touchstart', unlockAudio);
+            window.removeEventListener('scroll', unlockAudio);
+        };
+
+        // Добавляем обработчики на разные типы первого взаимодействия
+        window.addEventListener('click', unlockAudio);
+        window.addEventListener('touchstart', unlockAudio);
+        window.addEventListener('scroll', unlockAudio);
+
+        // Функция очистки
+        return () => {
+            window.removeEventListener('click', unlockAudio);
+            window.removeEventListener('touchstart', unlockAudio);
+            window.removeEventListener('scroll', unlockAudio);
+        };
+    }, []);
+    // --- КОНЕЦ ИЗМЕНЕНИЯ ---
+
     useEffect(() => {
         const handleRealtimeEvent = (payload) => {
             log(PAGE_SOURCE, `Получено Realtime ${payload.eventType} событие для таблицы ${payload.table}`);
-            
-            // Если событие - УДАЛЕНИЕ в таблице 'queues'
             if (payload.table === 'queues' && payload.eventType === 'DELETE') {
                  log(PAGE_SOURCE, 'Очередь была удалена.');
                  clearActiveSession();
                  setStatus('error');
                  setErrorMessage('Эта очередь была удалена администратором.');
-                 // Отписываемся от каналов, так как они больше не нужны
                  service.removeSubscription(memberChannel);
                  service.removeSubscription(queueChannel);
-                 return; // Прекращаем дальнейшую обработку
+                 return;
             }
-
-            // Для всех остальных событий просто проверяем статус
             checkMyStatus();
         };
 
-        // Канал 1: Отслеживает изменения участников
-        const memberChannel = service.subscribe(
-            `wait-page-members-${queueId}`, 
-            { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queueId}` }, 
-            handleRealtimeEvent
-        );
-
-        // Канал 2: Отслеживает УДАЛЕНИЕ самой очереди
-        const queueChannel = service.subscribe(
-            `wait-page-queue-${queueId}`, 
-            { event: 'DELETE', schema: 'public', table: 'queues', filter: `id=eq.${queueId}`}, 
-            handleRealtimeEvent
-        );
+        const memberChannel = service.subscribe(`wait-page-members-${queueId}`, { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queueId}` }, handleRealtimeEvent);
+        const queueChannel = service.subscribe(`wait-page-queue-${queueId}`, { event: 'DELETE', schema: 'public', table: 'queues', filter: `id=eq.${queueId}`}, handleRealtimeEvent);
         
         const handlePageShow = (event) => {
             if (event.persisted) {
-                log(PAGE_SOURCE, 'Страница восстановлена из кеша, принудительно обновляем.');
-                checkMyStatus();
+                log(PAGE_SOURCE, 'Страница восстановлена из кеша, принудительно обновляем данные.');
+                checkMyStatus(true);
             }
             setNotificationPermission(Notification.permission);
         };
@@ -185,10 +185,8 @@ function WaitPage() {
         window.addEventListener('pageshow', handlePageShow);
         document.addEventListener('visibilitychange', handleVisibilityChange);
         
-        // Первоначальная загрузка данных
         checkMyStatus(true);
 
-        // Функция отписки при размонтировании компонента
         return () => {
             service.removeSubscription(memberChannel);
             service.removeSubscription(queueChannel);
@@ -197,14 +195,18 @@ function WaitPage() {
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [memberId, queueId]);
-    // --- КОНЕЦ ИЗМЕНЕНИЙ ---
 
     useEffect(() => {
         if (myInfo) {
             if (myInfo.status === 'called' && !notificationTriggered.current) {
                 notificationTriggered.current = true;
                 document.title = "ВАША ОЧЕРЕДЬ!";
-                audioPlayer.current?.play().catch(e => log(PAGE_SOURCE, 'Ошибка воспроизведения аудио', e));
+                
+                // --- ИЗМЕНЕНИЕ 3/3: Используем уже "разблокированный" плеер ---
+                if (audioPlayer.current) {
+                    audioPlayer.current.play().catch(e => log(PAGE_SOURCE, 'Ошибка воспроизведения аудио', e));
+                }
+                
                 if (notificationPermission === 'granted') {
                     const windowText = !isSimpleMode && myInfo.windows?.name ? ` в ${myInfo.windows.name}` : '';
                     new Notification('Ваша очередь подошла!', {
@@ -234,7 +236,6 @@ function WaitPage() {
     
     if (status === 'loading') return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spinner /></div>;
     
-    // --- ИЗМЕНЕНИЕ: Контейнер с ошибкой теперь более заметен ---
     if (status === 'error') return (
         <div className={`container ${styles.pageContainer}`}>
             <div className={styles.errorContainer}>
@@ -242,12 +243,10 @@ function WaitPage() {
             </div>
         </div>
     );
-    // --- КОНЕЦ ИЗМЕНЕНИЯ ---
     
     return (
         <div className={`container ${styles.pageContainer}`}>
              <div className={waitCardClasses}>
-                <audio ref={audioPlayer} src="/notification.mp3" preload="auto" loop />
                 <h2>Очередь: {queueInfo?.name}</h2>
                 <hr className={styles.divider}/>
                 <p className={styles.greeting}>Здравствуйте, <strong>{myInfo?.member_name}</strong>!</p>
