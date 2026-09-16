@@ -3,7 +3,7 @@ import { useNavigate, Link, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import QRCode from 'qrcode';
 import { Settings, QrCode, UserX, PauseCircle, PlayCircle, Users, Share2, Link2, Check, Info, PhoneCall, Undo2, Plus, Trash2, Home } from 'lucide-react';
-import { useQueue } from '../context/QueueContext';
+import { useQueue } from '../hooks/useQueue';
 import * as service from '../services/supabaseService';
 import { useMyQueues } from '../hooks/useMyQueues';
 

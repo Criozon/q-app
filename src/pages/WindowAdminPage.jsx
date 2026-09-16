@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useWindowAdmin } from '../context/WindowAdminContext';
+import { useWindowAdmin } from '../hooks/useWindowAdmin';
 import { Check, PhoneCall, Undo2, Users, QrCode, Share2, UserX } from 'lucide-react';
 import Card from '../components/Card';
 import Button from '../components/Button';

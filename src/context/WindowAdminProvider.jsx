@@ -1,12 +1,12 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import QRCode from 'qrcode';
 import log from '../utils/logger';
 import * as service from '../services/supabaseService';
+import { WindowAdminContext } from './WindowAdminContext';
 
 const PAGE_SOURCE = 'WindowAdminContext';
-const WindowAdminContext = createContext(null);
 
 export function WindowAdminProvider({ children }) {
     const { shortKey } = useParams();
@@ -28,7 +28,11 @@ export function WindowAdminProvider({ children }) {
             setError(null);
         }
         try {
-            // Один запрос вместо нескольких!
+            // Сначала обмениваем ключ окна на пропуск — без него политики
+            // не пустят ни к таблицам, ни к Realtime-событиям очереди.
+            const { error: claimError } = await service.claimWindowOperator(shortKey);
+            if (claimError) throw new Error("Панель управления не найдена. Неверный ключ доступа.");
+
             const { data, error: rpcError } = await service.getWindowAdminInitialData(shortKey);
             if (rpcError) throw rpcError;
             
@@ -93,8 +97,8 @@ export function WindowAdminProvider({ children }) {
         };
     }, [queueInfo, windowInfo, isQueueDeleted, loadInitialData]);
 
-    const callNext = useCallback(async () => { if (!windowInfo || !queueInfo) return; setIsProcessing(true); try { await service.callNextMemberToWindow(windowInfo.id); } catch (error) { toast.error("Не удалось вызвать участника."); } finally { setIsProcessing(false); } }, [windowInfo, queueInfo]);
-    const callSpecific = useCallback(async (memberId, assignedMember) => { if (assignedMember) { toast.error('Завершите текущее обслуживание, чтобы вызвать другого участника.'); return; } setIsProcessing(true); try { await service.callSpecificMember(memberId, windowInfo.id); } catch(error) { toast.error("Не удалось вызвать этого участника."); } finally { setIsProcessing(false); } }, [windowInfo]);
+    const callNext = useCallback(async () => { if (!windowInfo || !queueInfo) return; setIsProcessing(true); try { await service.callNextMemberToWindow(windowInfo.id); } catch { toast.error("Не удалось вызвать участника."); } finally { setIsProcessing(false); } }, [windowInfo, queueInfo]);
+    const callSpecific = useCallback(async (memberId, assignedMember) => { if (assignedMember) { toast.error('Завершите текущее обслуживание, чтобы вызвать другого участника.'); return; } setIsProcessing(true); try { await service.callSpecificMember(memberId, windowInfo.id); } catch { toast.error("Не удалось вызвать этого участника."); } finally { setIsProcessing(false); } }, [windowInfo]);
     const completeService = useCallback(async (memberId) => { setIsProcessing(true); try { await service.updateMemberStatus(memberId, 'serviced'); } finally { setIsProcessing(false); } }, []);
     const returnToQueue = useCallback(async (memberId) => { setIsProcessing(true); try { await service.returnMemberToWaiting(memberId); } finally { setIsProcessing(false); } }, []);
     
@@ -105,10 +109,4 @@ export function WindowAdminProvider({ children }) {
     }), [windowInfo, queueInfo, members, assignedMember, loading, error, isProcessing, isJoinModalOpen, joinUrl, qrCodeUrl, isQueueDeleted, loadInitialData, callNext, callSpecific, completeService, returnToQueue]);
     
     return (<WindowAdminContext.Provider value={value}>{children}</WindowAdminContext.Provider>);
-}
-
-export function useWindowAdmin() {
-    const context = useContext(WindowAdminContext);
-    if (context === null) throw new Error('useWindowAdmin должен использоваться внутри WindowAdminProvider');
-    return context;
 }
