@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Bell, BellOff, Check, X, Clock, Megaphone, PauseCircle } from 'lucide-react';
+import { Bell, BellOff, Check, X, Clock, Megaphone, PauseCircle, WifiOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Button from '../components/Button';
 import Spinner from '../components/Spinner';
@@ -32,6 +32,15 @@ function WaitPage() {
     const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
     const [announcements, setAnnouncements] = useState<MyQueueStatus['announcements']>([]);
     const [isDeferring, setIsDeferring] = useState(false);
+    const [connectionLost, setConnectionLost] = useState(false);
+    /**
+     * Успели ли хоть раз загрузить данные. Именно ref, а не состояние:
+     * таймер опроса захватывает checkMyStatus из первого рендера, и любое
+     * состояние внутри него навсегда останется тем, каким было на старте.
+     * На этом уже обожглись — при ошибке таймер видел status === 'loading'
+     * и стирал талон с экрана.
+     */
+    const hasLoadedOnce = useRef(false);
     const [status, setStatus] = useState('loading');
     const [errorMessage, setErrorMessage] = useState('');
     const [isLeaving, setIsLeaving] = useState(false);
@@ -125,19 +134,33 @@ function WaitPage() {
     // Статус, количество впереди, прогноз и объявления приходят одним
     // вызовом: считать «перед вами N» на клиенте больше нельзя — участник
     // по политикам доступа видит только собственную строку.
+    /**
+     * Обновление статуса.
+     *
+     * Важно различать два рода неудач. Ответ «вас удалили» или «очередь
+     * удалена» — окончательный, показываем сообщение вместо талона.
+     * А вот обрыв сети окончательным не является: приложением пользуются
+     * с мобильного интернета в помещении, где связь скачет, и стирать
+     * талон с экрана из-за одного неудачного запроса нельзя. В этом
+     * случае оставляем последние известные данные и ждём следующей
+     * попытки, показав ненавязчивую плашку.
+     */
     const checkMyStatus = async () => {
         log(PAGE_SOURCE, 'Проверка статуса...');
         try {
-            const { data, error } = await service.getMyQueueStatus(memberId!);
-            if (error) throw error;
+            const { data } = await service.getMyQueueStatus(memberId!);
 
             if (data?.error === 'member_not_found') {
                 clearActiveSession();
-                throw new Error('Вас удалили из этой очереди.');
+                setStatus('error');
+                setErrorMessage('Вас удалили из этой очереди.');
+                return;
             }
             if (data?.error === 'queue_deleted' || !data?.member) {
                 clearActiveSession();
-                throw new Error('Очередь, в которой вы находились, была удалена администратором.');
+                setStatus('error');
+                setErrorMessage('Очередь, в которой вы находились, была удалена администратором.');
+                return;
             }
 
             setMyInfo(data.member);
@@ -145,11 +168,17 @@ function WaitPage() {
             setPeopleAhead(data.people_ahead ?? 0);
             setEstimatedMinutes(data.estimated_minutes ?? null);
             setAnnouncements(data.announcements ?? []);
-            if (status !== 'ok') setStatus('ok');
+            setConnectionLost(false);
+            hasLoadedOnce.current = true;
+            setStatus('ok');
         } catch (err) {
-            log(PAGE_SOURCE, 'Ошибка при проверке статуса', err);
-            setStatus('error');
-            setErrorMessage(toErrorMessage(err));
+            log(PAGE_SOURCE, 'Не удалось обновить статус, попробуем ещё раз', err);
+            setConnectionLost(true);
+            // Показывать нечего только если данные не успели загрузиться ни разу.
+            if (!hasLoadedOnce.current) {
+                setStatus('error');
+                setErrorMessage(toErrorMessage(err, 'Не удалось связаться с сервером. Проверьте соединение.'));
+            }
         }
     };
 
@@ -387,6 +416,13 @@ function WaitPage() {
                 )}
             </div>
             
+            {connectionLost && (
+                <div className={styles.connectionLost}>
+                    <WifiOff size={16} />
+                    <span>Нет связи с сервером. Данные могли устареть — пробуем восстановить.</span>
+                </div>
+            )}
+
             {announcements.length > 0 && (
                 <Card className={styles.announcements}>
                     <div className={styles.announcementsHeader}>
@@ -410,6 +446,23 @@ function WaitPage() {
                         <p>Разрешите нам присылать уведомления, и мы сообщим, когда вас вызовут.</p>
                     </div>
                     <Button onClick={requestNotificationPermission} className={styles.promptButton}>Включить</Button>
+                </Card>
+            )}
+
+            {/* Уведомлений в браузере нет вовсе — на практике это Safari на iPhone
+                вне установленного на домашний экран приложения. Молчать здесь
+                нельзя: человек должен понимать, на чём держится его вызов. */}
+            {notificationPermission === 'unsupported' && myInfo?.status === 'waiting' && (
+                <Card className={styles.notificationPrompt}>
+                    <div className={styles.promptIcon}><BellOff size={24} /></div>
+                    <div className={styles.promptText}>
+                        <h4>Держите эту страницу открытой</h4>
+                        <p>
+                            Ваш браузер не умеет показывать уведомления. Мы не дадим экрану
+                            погаснуть и покажем вызов прямо здесь. На iPhone уведомления
+                            работают, только если добавить приложение на экран «Домой».
+                        </p>
+                    </div>
                 </Card>
             )}
 
