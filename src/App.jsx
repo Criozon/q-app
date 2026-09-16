@@ -8,10 +8,9 @@ import WaitPage from './pages/WaitPage';
 import PrintPage from './pages/PrintPage';
 import WindowAdminPage from './pages/WindowAdminPage';
 
-import { QueueProvider } from './context/QueueContext';
-import { WindowAdminProvider } from './context/WindowAdminContext';
+import { QueueProvider } from './context/QueueProvider';
+import { WindowAdminProvider } from './context/WindowAdminProvider';
 
-import './App.css'; 
 
 function App() {
   return (

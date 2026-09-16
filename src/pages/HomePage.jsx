@@ -44,10 +44,11 @@ function HomePage() {
       const session = getActiveSession();
       if (session) {
         try {
-            const { data: memberData } = await service.getMemberById(session.memberId);
-            
+            const { data: status } = await service.getMyQueueStatus(session.memberId);
+            const memberData = status?.member;
+
             // Если участника нет (или обслужили), просто чистим сессию
-            if (!memberData || memberData.status === 'serviced') {
+            if (!memberData || memberData.status === 'serviced' || status?.error) {
               clearActiveSession();
               return;
             }
@@ -56,7 +57,7 @@ function HomePage() {
             if (['waiting', 'called', 'acknowledged'].includes(memberData.status)) {
               setConfirmation({
                 isOpen: true,
-                title: `Вы уже в очереди "${memberData.queues.name}"`,
+                title: `Вы уже в очереди "${status.queue.name}"`,
                 message: <p>Похоже, вы не вышли из своей предыдущей очереди. Что вы хотите сделать?</p>,
                 confirmText: "Вернуться в очередь",
                 cancelText: "Покинуть старую очередь",
@@ -66,7 +67,7 @@ function HomePage() {
                 },
                 onCancelAction: () => {
                     const toastId = toast.loading('Выходим из предыдущей очереди...');
-                    service.deleteMember(session.memberId).then(({error}) => {
+                    service.leaveQueue(session.memberId).then(({error}) => {
                         if (error) {
                             toast.error('Не удалось выйти из очереди.', { id: toastId });
                         } else {
@@ -86,8 +87,6 @@ function HomePage() {
         }
       }
     };
-    // Eslint-disable-next-line для navigate добавлен, т.к. он стабилен и не требует включения в массив зависимостей
-    // eslint-disable-next-line
     checkSession();
   }, [navigate]);
 

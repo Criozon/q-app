@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import QRCode from 'qrcode';
-import { Settings, QrCode, UserX, PauseCircle, PlayCircle, Users, Share2, Link2, Check, Info, PhoneCall, Undo2, Plus, Trash2, Home } from 'lucide-react';
-import { useQueue } from '../context/QueueContext';
+import { Settings, QrCode, UserX, PauseCircle, PlayCircle, Users, Share2, Link2, Check, Info, PhoneCall, Undo2, Plus, Trash2, Home, Megaphone, BarChart3, Send } from 'lucide-react';
+import { useQueue } from '../hooks/useQueue';
 import * as service from '../services/supabaseService';
 import { useMyQueues } from '../hooks/useMyQueues';
 
@@ -39,6 +39,11 @@ function AdminPage() {
     const [selectedWindow, setSelectedWindow] = useState(null);
     const [windowQrCode, setWindowQrCode] = useState('');
     const [confirmation, setConfirmation] = useState({ isOpen: false });
+    const [announcements, setAnnouncements] = useState([]);
+    const [announcementDraft, setAnnouncementDraft] = useState('');
+    const [isPostingAnnouncement, setIsPostingAnnouncement] = useState(false);
+    const [stats, setStats] = useState(null);
+    const [isStatsOpen, setIsStatsOpen] = useState(false);
 
     const [newServiceName, setNewServiceName] = useState('');
     const [isAddingService, setIsAddingService] = useState(false);
@@ -74,7 +79,7 @@ function AdminPage() {
             const { data } = await service.addService(queue.id, newServiceName.trim());
             setEditableServices(prev => [...prev, { ...data, window_indices: [] }]);
             setNewServiceName('');
-        } catch (error) {
+        } catch {
             toast.error('Не удалось добавить услугу.');
         } finally {
             setIsAddingService(false);
@@ -121,7 +126,7 @@ function AdminPage() {
             await Promise.all([...assignmentPromises, ...deletedServicePromises]);
             
             toast.success('Настройки успешно сохранены!', { id: toastId });
-        } catch (err) {
+        } catch {
             toast.error('Не удалось сохранить настройки.', { id: toastId });
         } finally {
             await loadQueueData();
@@ -132,7 +137,7 @@ function AdminPage() {
     
     const isSimpleMode = useMemo(() => windows.length === 1, [windows]);
     useEffect(() => { if (queue && !loading) { setMyQueues(prevQueues => { const queueExists = prevQueues.some(q => q.id === queue.id); if (queueExists) return prevQueues; return [{ id: queue.id, name: queue.name, admin_secret_key: queue.admin_secret_key }, ...prevQueues]; }); if (location.state?.fromCreation && !isJoinModalOpen) { setIsJoinModalOpen(true); navigate(location.pathname, { replace: true, state: {} }); } } }, [queue, loading, location.state, navigate, setMyQueues, isJoinModalOpen]);
-    const handleToggleQueueStatus = useCallback(async () => { if (!queue) return; const originalStatus = queue.status; const newStatus = originalStatus === 'active' ? 'paused' : 'active'; const actionText = newStatus === 'paused' ? 'приостановлена' : 'возобновлена'; setQueue(prevQueue => ({ ...prevQueue, status: newStatus })); try { await service.updateQueueStatus(queue.id, newStatus); toast.success(`Запись в очередь ${actionText}.`); } catch (error) { toast.error("Не удалось изменить статус очереди."); setQueue(prevQueue => ({ ...prevQueue, status: originalStatus })); } }, [queue, setQueue]);
+    const handleToggleQueueStatus = useCallback(async () => { if (!queue) return; const originalStatus = queue.status; const newStatus = originalStatus === 'active' ? 'paused' : 'active'; const actionText = newStatus === 'paused' ? 'приостановлена' : 'возобновлена'; setQueue(prevQueue => ({ ...prevQueue, status: newStatus })); try { await service.updateQueueStatus(queue.id, newStatus); toast.success(`Запись в очередь ${actionText}.`); } catch { toast.error("Не удалось изменить статус очереди."); setQueue(prevQueue => ({ ...prevQueue, status: originalStatus })); } }, [queue, setQueue]);
     const callMember = useCallback(async (memberId, windowId) => { setIsProcessing(true); const { error } = await service.callSpecificMember(memberId, windowId); if (error) toast.error("Не удалось вызвать участника."); setIsProcessing(false); }, []);
     const completeService = useCallback(async (memberId) => { setIsProcessing(true); await service.updateMemberStatus(memberId, 'serviced'); setIsProcessing(false); }, []);
     const returnToQueue = useCallback(async (memberId) => { setIsProcessing(true); await service.returnMemberToWaiting(memberId); setIsProcessing(false); }, []);
@@ -152,9 +157,59 @@ function AdminPage() {
     }, []);
 
     const handleCloseWindowModal = useCallback(() => { setSelectedWindow(null); setWindowQrCode(''); }, []);
+
+    // Объявления — односторонний канал к ожидающим. Ровно то, чего не умеют
+    // аппаратные системы: они показывают только номера.
+    const loadAnnouncements = useCallback(async () => {
+        if (!queue) return;
+        try {
+            const { data } = await service.getAnnouncements(queue.id);
+            setAnnouncements(data || []);
+        } catch (err) {
+            log(PAGE_SOURCE, 'Не удалось загрузить объявления', err);
+        }
+    }, [queue]);
+
+    useEffect(() => { loadAnnouncements(); }, [loadAnnouncements]);
+
+    const handlePostAnnouncement = useCallback(async () => {
+        const body = announcementDraft.trim();
+        if (!body) return;
+        setIsPostingAnnouncement(true);
+        try {
+            const { error } = await service.postAnnouncement(queue.id, body);
+            if (error) throw error;
+            setAnnouncementDraft('');
+            await loadAnnouncements();
+            toast.success('Объявление отправлено всем ожидающим.');
+        } catch {
+            toast.error('Не удалось отправить объявление.');
+        } finally {
+            setIsPostingAnnouncement(false);
+        }
+    }, [announcementDraft, queue, loadAnnouncements]);
+
+    const handleDeleteAnnouncement = useCallback(async (id) => {
+        try {
+            await service.deleteAnnouncement(id);
+            await loadAnnouncements();
+        } catch {
+            toast.error('Не удалось удалить объявление.');
+        }
+    }, [loadAnnouncements]);
+
+    const handleOpenStats = useCallback(async () => {
+        setIsStatsOpen(true);
+        try {
+            const { data } = await service.getQueueStats(queue.id);
+            setStats(data);
+        } catch {
+            toast.error('Не удалось загрузить итоги.');
+        }
+    }, [queue]);
     const handleRemoveMember = useCallback((member) => { setConfirmation({ isOpen: true, title: 'Удалить участника?', message: <p>Вы уверены, что хотите удалить <strong>{member.member_name} ({member.display_code})</strong> из очереди?</p>, confirmText: 'Да, удалить', isDestructive: true, onConfirm: async () => { await service.deleteMember(member.id); toast.success(`Участник ${member.member_name} удален.`);},});}, []);
     const handleDeleteCurrentQueue = useCallback(() => { if (!queue) return; setConfirmation({ isOpen: true, title: 'Удалить очередь?', message: <p>Вы уверены, что хотите удалить очередь <strong>"{queue.name}"</strong>? Это действие необратимо.</p>, confirmText: 'Да, удалить', isDestructive: true, onConfirm: () => { const toastId = toast.loading(`Удаляем очередь "${queue.name}"...`); service.deleteQueue(queue.id).then(({error}) => { if (error) toast.error(`Не удалось удалить очередь "${queue.name}".`, { id: toastId }); else { setMyQueues(prev => prev.filter(q => q.id !== queue.id)); toast.success(`Очередь "${queue.name}" удалена.`, { id: toastId }); navigate('/'); } }); } }); }, [queue, navigate, setMyQueues]);
-    const handleShare = useCallback(async (shareData) => { if (navigator.share) { try { await navigator.share(shareData); } catch (err) { log(PAGE_SOURCE, 'Ошибка Web Share API:', err); } } else { navigator.clipboard.writeText(shareData.url).then(() => { setCopiedKey(shareData.key); setTimeout(() => setCopiedKey(null), 2000); }).catch(err => toast.error("Не удалось скопировать ссылку.")); } }, []);
+    const handleShare = useCallback(async (shareData) => { if (navigator.share) { try { await navigator.share(shareData); } catch (err) { log(PAGE_SOURCE, 'Ошибка Web Share API:', err); } } else { navigator.clipboard.writeText(shareData.url).then(() => { setCopiedKey(shareData.key); setTimeout(() => setCopiedKey(null), 2000); }).catch(() => toast.error("Не удалось скопировать ссылку.")); } }, []);
     const getStatusText = useCallback((member) => { switch (member.status) { case 'called': return isSimpleMode ? 'Вызывается' : `Вызывается в: ${member.window_name?.name || '...'}`; case 'acknowledged': return isSimpleMode ? 'Идет к окну' : `Идет в: ${member.window_name?.name || '...'}`; case 'serviced': return 'Обслужен'; default: return 'Ожидает'; } }, [isSimpleMode]);
     const assignedMemberInSimpleMode = useMemo(() => isSimpleMode ? members.find(m => m.assigned_window_id === windows[0]?.id && (m.status === 'called' || m.status === 'acknowledged')) : null, [members, windows, isSimpleMode]);
     if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spinner /></div>;
@@ -196,8 +251,57 @@ function AdminPage() {
                         ))}</div>
                     </Section>
                 )}
+                <Section title="Объявление для очереди">
+                    <Card className={styles.announcePanel}>
+                        <p className={styles.announceHint}>
+                            Сообщение увидят все, кто ждёт прямо сейчас — например, что приём задерживается.
+                        </p>
+                        <div className={styles.announceRow}>
+                            <Input
+                                placeholder="Врач задерживается на 15 минут"
+                                value={announcementDraft}
+                                maxLength={500}
+                                onChange={(e) => setAnnouncementDraft(e.target.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && handlePostAnnouncement()}
+                            />
+                            <Button
+                                onClick={handlePostAnnouncement}
+                                isLoading={isPostingAnnouncement}
+                                disabled={!announcementDraft.trim()}
+                                className={styles.announceButton}
+                                title="Отправить объявление"
+                            >
+                                <Send size={18} />
+                            </Button>
+                        </div>
+                        {announcements.length > 0 && (
+                            <div className={styles.announceList}>
+                                {announcements.map(a => (
+                                    <div key={a.id} className={styles.announceItem}>
+                                        <Megaphone size={16} />
+                                        <span>{a.body}</span>
+                                        <button
+                                            className={styles.announceDelete}
+                                            onClick={() => handleDeleteAnnouncement(a.id)}
+                                            title="Удалить объявление"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </Card>
+                </Section>
+
                 <Section title="Общая очередь">
                     <div className={styles.memberList}>{members.length > 0 ? (members.map(member => (<Card key={member.id} className={`${styles.memberCard} ${member.status === 'called' ? styles.called : ''} ${member.status === 'acknowledged' ? styles.acknowledged : ''} ${member.status === 'serviced' ? styles.serviced : ''} ${member.status === 'called' ? 'called-animation' : ''}`}><div className={styles.memberInfo}><p className={styles.memberName}>{member.display_code || `#${member.ticket_number}`} - {member.member_name}</p>{member.service_name?.name && (<p className={styles.memberService}>{member.service_name.name}</p>)}<p className={styles.memberStatus}>{getStatusText(member)}</p></div><div className={styles.memberActions}>{isSimpleMode && member.status === 'waiting' && (<Button onClick={() => callMember(member.id, windows[0].id)} className={`${styles.actionButton} ${styles.callButton}`} title="Вызвать участника"><PhoneCall size={20} /></Button>)}<Button onClick={() => handleRemoveMember(member)} className={`${styles.actionButton} ${styles.removeButton}`} title="Удалить участника"><UserX size={20} /></Button></div></Card>))) : (<div className={styles.emptyState}><Users size={48} className={styles.emptyStateIcon} /><h3 className={styles.emptyStateTitle}>В очереди пока никого нет</h3><p className={styles.emptyStateText}>Поделитесь QR-кодом или ссылкой, чтобы люди могли присоединиться.</p><Button onClick={() => setIsJoinModalOpen(true)} className={styles.emptyStateButton}><QrCode size={18} />Показать QR-код</Button></div>)}</div>
+                </Section>
+
+                <Section title="Итоги">
+                    <Button onClick={handleOpenStats} className={styles.statsButton}>
+                        <BarChart3 size={18} /> Показать статистику
+                    </Button>
                 </Section>
             </main>
 
@@ -219,6 +323,31 @@ function AdminPage() {
                 </div>)}
             </Modal>
             
+            <Modal isOpen={isStatsOpen} onClose={() => setIsStatsOpen(false)} title="Итоги очереди">
+                {!stats ? <Spinner /> : (
+                    <div className={styles.statsGrid}>
+                        <div className={styles.statItem}><span>Обслужено</span><strong>{stats.served_total}</strong></div>
+                        <div className={styles.statItem}><span>Сейчас ждут</span><strong>{stats.waiting_now}</strong></div>
+                        <div className={styles.statItem}><span>Средний приём</span><strong>{stats.avg_service_minutes != null ? `${stats.avg_service_minutes} мин` : '—'}</strong></div>
+                        <div className={styles.statItem}><span>Среднее ожидание</span><strong>{stats.avg_wait_minutes != null ? `${stats.avg_wait_minutes} мин` : '—'}</strong></div>
+                        <div className={styles.statItem}><span>Отложили вызов</span><strong>{stats.deferred_total}</strong></div>
+                        {/* Час пика приходит моментом времени — форматируем в поясе смотрящего */}
+                        <div className={styles.statItem}><span>Пик нагрузки</span><strong>{stats.peak_hour_at ? new Date(stats.peak_hour_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '—'}</strong></div>
+                        {stats.by_window?.length > 1 && (
+                            <div className={styles.statsByWindow}>
+                                <h4>По окнам</h4>
+                                {stats.by_window.map(w => (
+                                    <div key={w.window_name} className={styles.statRow}>
+                                        <span>{w.window_name}</span>
+                                        <span>{w.served} чел.{w.avg_minutes != null ? ` · ${w.avg_minutes} мин` : ''}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </Modal>
+
             <Modal isOpen={isSettingsModalOpen} onClose={handleSaveSettings} title="Настройки очереди">
                 <Card className={homeStyles.form}>
                     <div className={homeStyles.formRow}>

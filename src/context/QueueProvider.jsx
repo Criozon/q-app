@@ -1,11 +1,11 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import QRCode from 'qrcode';
 import log from '../utils/logger';
 import * as service from '../services/supabaseService';
+import { QueueContext } from './QueueContext';
 
 const PAGE_SOURCE = 'QueueContext';
-const QueueContext = createContext(null);
 
 export function QueueProvider({ children }) {
   const { secretKey } = useParams();
@@ -24,7 +24,10 @@ export function QueueProvider({ children }) {
     }
     if (isInitialLoad) setError(null);
     try {
-      const { data: qData, error: qError } = await service.getQueueBySecret(secretKey);
+      // Секретная ссылка обменивается на пропуск, привязанный к анонимной
+      // сессии. Поэтому ссылка по-прежнему работает на любом устройстве,
+      // но прямой доступ к таблицам есть только у предъявившего ключ.
+      const { data: qData, error: qError } = await service.claimQueueAdmin(secretKey);
       if (qError || !qData) throw new Error("Очередь не найдена или была удалена.");
       setQueue(qData);
 
@@ -101,10 +104,4 @@ export function QueueProvider({ children }) {
       {children}
     </QueueContext.Provider>
   );
-}
-
-export function useQueue() {
-  const context = useContext(QueueContext);
-  if (context === null) throw new Error('useQueue должен использоваться внутри QueueProvider');
-  return context;
 }

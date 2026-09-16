@@ -379,3 +379,109 @@
 .saveSettingsButton {
     margin-top: 8px;
 }
+.announcePanel {
+  padding: 16px !important;
+}
+
+.announceHint {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: 0.9em;
+}
+
+.announceRow {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.announceRow > *:first-child {
+  flex: 1;
+}
+
+.announceButton {
+  flex-shrink: 0;
+  width: 48px;
+  padding: 0 !important;
+}
+
+.announceList {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.announceItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background-color: rgba(255, 149, 0, 0.1);
+  color: var(--text-primary);
+}
+
+.announceItem span {
+  flex: 1;
+  line-height: 1.35;
+}
+
+.announceDelete {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 4px;
+}
+
+.announceDelete:hover {
+  color: var(--accent-red, #ff3b30);
+}
+
+.statsButton {
+  width: 100%;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  border-radius: 12px;
+  background-color: #f2f2f7;
+}
+
+.statItem span {
+  font-size: 0.85em;
+  color: var(--text-secondary);
+}
+
+.statItem strong {
+  font-size: 1.4em;
+  color: var(--text-primary);
+}
+
+.statsByWindow {
+  grid-column: 1 / -1;
+}
+
+.statsByWindow h4 {
+  margin: 8px 0;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.statRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-top: 1px solid #e5e5ea;
+}

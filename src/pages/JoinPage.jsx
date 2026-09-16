@@ -29,37 +29,26 @@ function JoinPage() {
             setIsLoading(true);
             setError('');
             try {
-                const { data: queueData, error: queueError } = await service.getQueueByShortId(shortId);
-                if (queueError || !queueData) {
+                // Человек на этот момент ещё никто: ни талона, ни пропуска.
+                // Поэтому данные отдаёт отдельная публичная функция, которая
+                // показывает только название, описание и список услуг.
+                const { data: detailsData, error: detailsError } = await service.getQueueForJoin(shortId);
+                if (detailsError) throw detailsError;
+
+                const { queue: detailsQueue, services: detailsServices } = detailsData || {};
+                if (!detailsQueue) {
                     throw new Error('Очередь не найдена или была удалена.');
                 }
-                
-                // --- НАЧАЛО ИСПРАВЛЕНИЯ: Правильно обрабатываем ответ от сервера ---
-                // 1. Сначала получаем весь ответ
-                const { data: detailsData, error: detailsError } = await service.getQueueDetailsForJoining(queueData.id);
 
-                // 2. Проверяем на ошибку
-                if (detailsError) {
-                    throw detailsError;
-                }
-                
-                // 3. Извлекаем данные из свойства data
-                const { queue: detailsQueue, services: detailsServices } = detailsData;
-
-                // 4. Проверяем, что данные действительно пришли
-                if (!detailsQueue) {
-                    throw new Error('Не удалось загрузить детали очереди.');
-                }
-                
                 setQueue(detailsQueue);
                 setServices(detailsServices || []);
-                // --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
                 const session = getActiveSession();
                 if (session) {
-                    const { data: memberData } = await service.getMemberById(session.memberId);
-                    if (memberData && ['waiting', 'called', 'acknowledged'].includes(memberData.status)) {
-                        if (session.queueId === queueData.id) {
+                    const { data: status } = await service.getMyQueueStatus(session.memberId);
+                    const member = status?.member;
+                    if (member && ['waiting', 'called', 'acknowledged'].includes(member.status)) {
+                        if (session.queueId === detailsQueue.id) {
                             setCurrentActiveSession(session);
                         }
                     } else {
@@ -79,17 +68,21 @@ function JoinPage() {
         }
     }, [shortId]);
 
+    // Realtime здесь не подходит: он подчиняется тем же политикам доступа,
+    // а человек до входа в очередь её строку не видит. Поэтому опрашиваем —
+    // нужно всего лишь заметить, что запись поставили на паузу.
     useEffect(() => {
-        if (!queue) return;
-        const channel = service.subscribe(`join-page-queue-status-${queue.id}`, {
-            event: 'UPDATE', schema: 'public', table: 'queues', filter: `id=eq.${queue.id}`
-        }, (payload) => {
-            setQueue(prevQueue => ({ ...prevQueue, ...payload.new }));
-        });
-        return () => {
-            service.removeSubscription(channel);
-        };
-    }, [queue]);
+        if (!shortId) return;
+        const timer = setInterval(async () => {
+            try {
+                const { data } = await service.getQueueForJoin(shortId);
+                if (data?.queue) setQueue(prev => ({ ...prev, ...data.queue }));
+            } catch {
+                // молча: временная сетевая ошибка не должна ломать страницу
+            }
+        }, 20000);
+        return () => clearInterval(timer);
+    }, [shortId]);
 
     const handleJoinQueue = async () => {
         if (!memberName.trim()) { toast.error('Пожалуйста, введите ваше имя.'); return; }
@@ -97,12 +90,9 @@ function JoinPage() {
         setIsJoining(true);
         const toastId = toast.loading('Встаем в очередь...');
         try {
-            const chars = 'ACEHKMOPTX'; 
-            const randomChar = chars.charAt(Math.floor(Math.random() * chars.length));
-            const randomNumber = Math.floor(10 + Math.random() * 90);
-            const displayCode = `${randomChar}${randomNumber}`;
-            const memberData = { queue_id: queue.id, member_name: memberName.trim(), display_code: displayCode, service_id: selectedServiceId };
-            const { data, error } = await service.createMember(memberData);
+            // Вставка идёт через функцию на сервере: она же проставляет
+            // user_id из сессии, так что чужой талон не подделать.
+            const { data, error } = await service.joinQueue(shortId, memberName.trim(), selectedServiceId);
             if (error) throw error; 
             const session = { memberId: data.id, queueId: queue.id };
             setActiveSession(session);
@@ -119,7 +109,7 @@ function JoinPage() {
     const handleJoinAsNew = async () => {
         if (!currentActiveSession) return;
         const toastId = toast.loading('Выходим из предыдущей сессии...');
-        const { error: deleteError } = await service.deleteMember(currentActiveSession.memberId);
+        const { error: deleteError } = await service.leaveQueue(currentActiveSession.memberId);
         toast.dismiss(toastId);
         if (deleteError) { toast.error('Не удалось выйти из старой сессии.'); return; }
         clearActiveSession();

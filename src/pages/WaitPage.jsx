@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Bell, BellOff, Check, X } from 'lucide-react';
+import { Bell, BellOff, Check, X, Clock, Megaphone, PauseCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Button from '../components/Button';
 import Spinner from '../components/Spinner';
@@ -10,8 +10,15 @@ import styles from './WaitPage.module.css';
 import log from '../utils/logger';
 import * as service from '../services/supabaseService';
 import { clearActiveSession } from '../utils/session';
+import { useWakeLock } from '../hooks/useWakeLock';
 
 const PAGE_SOURCE = 'WaitPage';
+
+// В Safari на iOS объекта Notification нет вообще — он появляется только
+// в PWA, установленном на домашний экран. Прямое обращение Notification.permission
+// на обычной вкладке iPhone роняет рендер с ReferenceError, поэтому только так.
+const isNotificationSupported = () => typeof Notification !== 'undefined';
+const getNotificationPermission = () => (isNotificationSupported() ? Notification.permission : 'unsupported');
 
 function WaitPage() {
     const { queueId, memberId } = useParams();
@@ -19,16 +26,25 @@ function WaitPage() {
     const [myInfo, setMyInfo] = useState(null);
     const [queueInfo, setQueueInfo] = useState(null); 
     const [peopleAhead, setPeopleAhead] = useState(0);
+    const [estimatedMinutes, setEstimatedMinutes] = useState(null);
+    const [announcements, setAnnouncements] = useState([]);
+    const [isDeferring, setIsDeferring] = useState(false);
     const [status, setStatus] = useState('loading');
     const [errorMessage, setErrorMessage] = useState('');
     const [isLeaving, setIsLeaving] = useState(false);
-    const [notificationPermission, setNotificationPermission] = useState(Notification.permission);
+    const [notificationPermission, setNotificationPermission] = useState(getNotificationPermission);
     const notificationTriggered = useRef(false);
     // --- ИЗМЕНЕНИЕ 1/3: Возвращаем useRef для аудио-плеера ---
     const audioPlayer = useRef(null);
     const [confirmation, setConfirmation] = useState({ isOpen: false, title: '', message: null, onConfirm: () => {} });
     
     const isSimpleMode = queueInfo?.window_count === 1;
+
+    // Пока участник ждёт или его вызывают — не даём экрану гаснуть.
+    // Это единственный способ не потерять вызов на iPhone: Web Push в обычной
+    // вкладке Safari недоступен, а с погасшим экраном страница выгружается.
+    const isAwaitingCall = myInfo?.status === 'waiting' || myInfo?.status === 'called';
+    const { isActive: isScreenHeldAwake } = useWakeLock(isAwaitingCall);
 
     const waitCardClasses = [
         styles.waitCard,
@@ -48,10 +64,10 @@ function WaitPage() {
         stopNotificationSound();
         const toastId = toast.loading('Подтверждаем...');
         try {
-            const { error } = await service.updateMemberStatus(myInfo.id, 'acknowledged');
+            const { error } = await service.acknowledgeCall(myInfo.id);
             if (error) throw error;
             toast.success('Администратор уведомлен, что вы идете!', { id: toastId });
-        } catch (err) {
+        } catch {
             toast.error('Не удалось отправить подтверждение.', { id: toastId });
         }
     };
@@ -62,7 +78,7 @@ function WaitPage() {
     };
     
     const requestNotificationPermission = async () => {
-        if (!('Notification' in window)) {
+        if (!isNotificationSupported()) {
             toast.error('Ваш браузер не поддерживает уведомления.');
             return;
         }
@@ -89,12 +105,12 @@ function WaitPage() {
                 setIsLeaving(true);
                 const toastId = toast.loading('Выходим из очереди...');
                 try {
-                    const { error } = await service.deleteMember(memberId);
+                    const { error } = await service.leaveQueue(memberId);
                     if (error) throw error;
                     clearActiveSession();
                     toast.success('Вы успешно покинули очередь.', { id: toastId });
                     navigate('/');
-                } catch (error) {
+                } catch {
                     toast.error('Не удалось выйти из очереди.', { id: toastId });
                 } finally {
                     setIsLeaving(false);
@@ -103,22 +119,55 @@ function WaitPage() {
         });
     };
     
-    const checkMyStatus = async (isInitialLoad = false) => {
+    // Статус, количество впереди, прогноз и объявления приходят одним
+    // вызовом: считать «перед вами N» на клиенте больше нельзя — участник
+    // по политикам доступа видит только собственную строку.
+    const checkMyStatus = async () => {
         log(PAGE_SOURCE, 'Проверка статуса...');
         try {
-            const { data, error } = await service.getMemberById(memberId);
-            if (!data && error) { const { data: queueData } = await service.getQueueById(queueId); if (queueData) { clearActiveSession(); throw new Error('Вас удалили из этой очереди.'); } }
-            if (error || !data || !data.queues) { clearActiveSession(); throw new Error('Очередь, в которой вы находились, была удалена администратором.'); }
-            
-            setMyInfo(data);
-            setQueueInfo(data.queues);
-            const { count } = await service.getWaitingMembersCount(queueId, data.ticket_number);
-            setPeopleAhead(count || 0);
+            const { data, error } = await service.getMyQueueStatus(memberId);
+            if (error) throw error;
+
+            if (data?.error === 'member_not_found') {
+                clearActiveSession();
+                throw new Error('Вас удалили из этой очереди.');
+            }
+            if (data?.error === 'queue_deleted' || !data?.member) {
+                clearActiveSession();
+                throw new Error('Очередь, в которой вы находились, была удалена администратором.');
+            }
+
+            setMyInfo(data.member);
+            setQueueInfo(data.queue);
+            setPeopleAhead(data.people_ahead ?? 0);
+            setEstimatedMinutes(data.estimated_minutes ?? null);
+            setAnnouncements(data.announcements ?? []);
             if (status !== 'ok') setStatus('ok');
         } catch (err) {
             log(PAGE_SOURCE, 'Ошибка при проверке статуса:', err.message);
             setStatus('error');
             setErrorMessage(err.message);
+        }
+    };
+
+    // «Отложить вызов»: человек отходит, пропускает вперёд ближайших
+    // и не теряет очередь совсем. Второй участник для этого не нужен —
+    // договариваться не с кем и местами не торгуют.
+    const handleDeferCall = async () => {
+        setIsDeferring(true);
+        const toastId = toast.loading('Откладываем вызов...');
+        try {
+            const { error } = await service.deferMyCall(memberId, 3);
+            if (error) throw error;
+            stopNotificationSound();
+            notificationTriggered.current = false;
+            await checkMyStatus();
+            toast.success('Вас пропустят вперёд. Мы позовём позже.', { id: toastId });
+        } catch (err) {
+            const limit = String(err?.message || '').includes('Defer limit');
+            toast.error(limit ? 'Откладывать больше нельзя.' : 'Не удалось отложить вызов.', { id: toastId });
+        } finally {
+            setIsDeferring(false);
         }
     };
 
@@ -162,34 +211,43 @@ function WaitPage() {
                  setErrorMessage('Эта очередь была удалена администратором.');
                  service.removeSubscription(memberChannel);
                  service.removeSubscription(queueChannel);
+                 service.removeSubscription(announcementChannel);
                  return;
             }
             checkMyStatus();
         };
 
-        const memberChannel = service.subscribe(`wait-page-members-${queueId}`, { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queueId}` }, handleRealtimeEvent);
+        // Подписка сузилась до собственной строки: чужие события до участника
+        // теперь не доходят — Realtime подчиняется тем же политикам доступа.
+        // Поэтому «перед вами N» обновляем опросом: сам факт, что кого-то
+        // обслужили впереди, приходит только так.
+        const memberChannel = service.subscribe(`wait-page-me-${memberId}`, { event: '*', schema: 'public', table: 'queue_members', filter: `id=eq.${memberId}` }, handleRealtimeEvent);
         const queueChannel = service.subscribe(`wait-page-queue-${queueId}`, { event: 'DELETE', schema: 'public', table: 'queues', filter: `id=eq.${queueId}`}, handleRealtimeEvent);
+        const announcementChannel = service.subscribe(`wait-page-announcements-${queueId}`, { event: '*', schema: 'public', table: 'queue_announcements', filter: `queue_id=eq.${queueId}` }, handleRealtimeEvent);
+        const pollTimer = setInterval(checkMyStatus, 15000);
         
         const handlePageShow = (event) => {
             if (event.persisted) {
                 log(PAGE_SOURCE, 'Страница восстановлена из кеша, принудительно обновляем данные.');
-                checkMyStatus(true);
+                checkMyStatus();
             }
-            setNotificationPermission(Notification.permission);
+            setNotificationPermission(getNotificationPermission());
         };
         
         const handleVisibilityChange = () => {
-             if (document.visibilityState === 'visible') setNotificationPermission(Notification.permission);
+             if (document.visibilityState === 'visible') setNotificationPermission(getNotificationPermission());
         };
 
         window.addEventListener('pageshow', handlePageShow);
         document.addEventListener('visibilitychange', handleVisibilityChange);
         
-        checkMyStatus(true);
+        checkMyStatus();
 
         return () => {
+            clearInterval(pollTimer);
             service.removeSubscription(memberChannel);
             service.removeSubscription(queueChannel);
+            service.removeSubscription(announcementChannel);
             window.removeEventListener('pageshow', handlePageShow);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
@@ -257,7 +315,30 @@ function WaitPage() {
 
                 <h1 className={styles.displayCodeLabel}>Ваш код: <span className={styles.displayCode}>{myInfo?.display_code}</span></h1>
                 
-                {myInfo?.status === 'waiting' && (<><p className={styles.peopleAhead}>Перед вами: <strong>{peopleAhead}</strong> чел.</p><p className={styles.autoUpdateText}>Эта страница будет обновляться автоматически.</p></>)}
+                {myInfo?.status === 'waiting' && (
+                    <>
+                        {/* Человеку важно, успеет ли он выпить кофе, а не то,
+                            что перед ним семеро. Поэтому на первом месте время. */}
+                        <div className={styles.estimateBox}>
+                            <Clock size={20} />
+                            <span className={styles.estimateValue}>
+                                {peopleAhead === 0 ? 'Вы следующий' : `≈ ${estimatedMinutes} мин`}
+                            </span>
+                        </div>
+                        <p className={styles.peopleAhead}>
+                            {peopleAhead === 0 ? 'Ожидайте вызова' : <>Перед вами: <strong>{peopleAhead}</strong> чел.</>}
+                        </p>
+                        <p className={styles.autoUpdateText}>
+                            Эта страница будет обновляться автоматически.
+                            {isScreenHeldAwake && ' Экран не будет гаснуть, чтобы вы не пропустили вызов.'}
+                        </p>
+                        {myInfo.defer_count < 3 && peopleAhead >= 0 && (
+                            <Button onClick={handleDeferCall} isLoading={isDeferring} className={styles.deferButton}>
+                                <PauseCircle size={18} /> Мне нужно отойти
+                            </Button>
+                        )}
+                    </>
+                )}
                 
                 {myInfo?.status === 'called' && (
                     <div className={`${styles.statusBox} ${styles.statusCalled}`}>
@@ -274,6 +355,11 @@ function WaitPage() {
                                 <Check size={20} /> Я иду!
                             </Button>
                         </div>
+                        {myInfo.defer_count < 3 && (
+                            <Button onClick={handleDeferCall} isLoading={isDeferring} className={styles.deferButton}>
+                                <PauseCircle size={18} /> Не успеваю, пропустите вперёд
+                            </Button>
+                        )}
                     </div>
                 )}
                 
@@ -296,6 +382,21 @@ function WaitPage() {
                 )}
             </div>
             
+            {announcements.length > 0 && (
+                <Card className={styles.announcements}>
+                    <div className={styles.announcementsHeader}>
+                        <Megaphone size={18} />
+                        <span>Сообщения организатора</span>
+                    </div>
+                    {announcements.map(a => (
+                        <div key={a.id} className={styles.announcement}>
+                            <p>{a.body}</p>
+                            <time>{new Date(a.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</time>
+                        </div>
+                    ))}
+                </Card>
+            )}
+
             {notificationPermission === 'default' && myInfo?.status === 'waiting' && (
                 <Card className={styles.notificationPrompt}>
                     <div className={styles.promptIcon}><Bell size={24} /></div>
