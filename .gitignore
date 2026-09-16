@@ -63,9 +63,12 @@ dist
 # IDE-specific configuration files
 .idea/
 .vscode/
+.claude/
 
 # Environment variables file - IMPORTANT for security!
 # This ensures your secret keys are not committed to Git.
 .env
 .env.local
 .env.*.local
+.vercel
+.env*
