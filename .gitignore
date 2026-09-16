@@ -74,3 +74,6 @@ dist
 .env*
 # образец с плейсхолдерами — он нужен в репозитории
 !.env.example
+
+# служебный каталог Supabase CLI
+supabase/.temp/
