@@ -144,6 +144,8 @@
     transform: translateY(-50%);
     padding: 8px !important;
     width: auto !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
     background-color: #e5e5e5 !important;
     color: var(--text-primary) !important;
     z-index: 5;
@@ -217,8 +219,13 @@
 }
 
 .actionButton {
-  padding: 8px !important; 
-  width: auto !important;   
+  /* 44px — минимальный размер цели нажатия по рекомендации Apple.
+     Иконочные кнопки стоят вплотную к соседям, и промах по «удалить»
+     на телефоне обходится дорого. */
+  padding: 8px !important;
+  width: auto !important;
+  min-width: 44px !important;
+  min-height: 44px !important;
 }
 
 .callButton {
@@ -429,11 +436,15 @@
 
 .announceDelete {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
   background: none;
   border: none;
   cursor: pointer;
   color: var(--text-secondary);
-  padding: 4px;
 }
 
 .announceDelete:hover {

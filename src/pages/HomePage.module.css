@@ -89,6 +89,7 @@
   margin: 0 auto;
   padding: 8px 16px !important;
   width: auto;
+  min-height: 44px;
 }
 
 .addButton:hover:not(:disabled) {
@@ -142,6 +143,8 @@
   padding: 8px;
   border-radius: 50%;
   transition: background-color 0.2s ease;
+  min-width: 44px;
+  min-height: 44px;
 }
 
 .deleteButton:hover {
