@@ -72,3 +72,5 @@ dist
 .env.*.local
 .vercel
 .env*
+# образец с плейсхолдерами — он нужен в репозитории
+!.env.example
