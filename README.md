@@ -8,6 +8,8 @@
 
 ## Стек
 
+- TypeScript в строгом режиме; типы таблиц и функций генерируются из схемы:
+  `supabase gen types typescript --project-id <ref> > src/types/database.ts`
 - React 19 + Vite 7 (`@vitejs/plugin-react`)
 - react-router-dom 7 (`BrowserRouter`, поэтому на хостинге нужен SPA-fallback — см. `vercel.json`)
 - Хостинг: Vercel, проект `q-app-queue`. Переменные окружения заводятся
@@ -39,7 +41,9 @@ Authentication → Sign In / Providers → **Allow anonymous sign-ins**.
 Без этого приложение не получит сессию, а политики доступа не отдадут
 ничего — экран останется пустым без внятной ошибки.
 
-Скрипты: `npm run dev` · `npm run build` · `npm run preview` · `npm run lint` · `npm test`
+Скрипты: `npm run dev` · `npm run build` · `npm run preview` · `npm run lint` · `npm run typecheck` · `npm test`
+
+`npm run build` проверяет типы перед сборкой, так что сломанные типы до продакшена не доедут.
 
 ## База данных
 
@@ -134,7 +138,8 @@ Docker не ставили сознательно — проект некомм�
 - **Форма полей `service_name` / `window_name` различается** между источниками:
   из PostgREST-embed (`getMembersByQueueId`) приходят объекты `{ name }`,
   из RPC `get_window_admin_initial_data` — плоские строки. Страницы рассчитаны
-  каждая на свой вариант, менять форму в одном месте нельзя.
+  каждая на свой вариант, менять форму в одном месте нельзя. Обе формы описаны
+  в `src/types/domain.ts`, так что перепутать их теперь не получится молча.
 
 ## Уведомления при заблокированном экране (iOS)
 
