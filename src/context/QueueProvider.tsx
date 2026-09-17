@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import QRCode from 'qrcode';
@@ -71,21 +71,42 @@ export function QueueProvider({ children }: { children: ReactNode }) {
     void loadQueueData(true);
   }, [loadQueueData]);
   
+  /**
+   * Перезагрузка данных живёт в ref, а не в зависимостях подписки.
+   *
+   * Иначе получалась воронка: событие -> loadQueueData -> setQueue с новым
+   * объектом -> зависимости эффекта изменились -> каналы снесены и созданы
+   * заново. Замерили: шесть переподписок на три события. А всё, что
+   * приходило в момент пересоздания канала, ТЕРЯЛОСЬ — отсюда «клиент
+   * нажал „Я иду“, а у администратора не видно».
+   */
+  const loadQueueDataRef = useRef(loadQueueData);
+  useEffect(() => { loadQueueDataRef.current = loadQueueData; }, [loadQueueData]);
+
+  // Только идентификатор: строка меняется, лишь когда меняется сама очередь.
+  const queueId = queue?.id;
+
   useEffect(() => {
-    if (!queue) return;
+    if (!queueId) return;
     const handleRealtimeUpdate = (payload: RealtimePayload) => {
       log(PAGE_SOURCE, `Realtime (${payload.table}): ${payload.eventType}, перезагружаем данные.`);
-      void loadQueueData(false);
+      void loadQueueDataRef.current(false);
     };
 
-    const memberChannel = service.subscribe(`context-admin-members-${queue.id}`, { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queue.id}` }, handleRealtimeUpdate);
-    const otherTablesChannel = service.subscribe(`context-admin-other-${queue.id}`, { event: '*', schema: 'public', table: 'queues,services,window_services' }, handleRealtimeUpdate);
+    const common = { event: '*', schema: 'public' } as const;
+    // Раньше здесь был один канал с table: 'queues,services,window_services'.
+    // Так нельзя: postgres_changes принимает ровно одно имя таблицы, и та
+    // подписка молча не работала — изменения услуг и статуса очереди до
+    // администратора не доходили вовсе.
+    const channels = [
+      service.subscribe(`admin-members-${queueId}`, { ...common, table: 'queue_members', filter: `queue_id=eq.${queueId}` }, handleRealtimeUpdate),
+      service.subscribe(`admin-queue-${queueId}`, { ...common, table: 'queues', filter: `id=eq.${queueId}` }, handleRealtimeUpdate),
+      service.subscribe(`admin-services-${queueId}`, { ...common, table: 'services', filter: `queue_id=eq.${queueId}` }, handleRealtimeUpdate),
+      service.subscribe(`admin-windows-${queueId}`, { ...common, table: 'windows', filter: `queue_id=eq.${queueId}` }, handleRealtimeUpdate),
+    ];
 
-    return () => {
-      service.removeSubscription(memberChannel);
-      service.removeSubscription(otherTablesChannel);
-    };
-  }, [queue, loadQueueData]);
+    return () => channels.forEach(service.removeSubscription);
+  }, [queueId]);
 
   const waitingMembersCount = useMemo(() => members.filter(m => m.status === 'waiting').length, [members]);
 
