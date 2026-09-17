@@ -13,18 +13,10 @@
  */
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { makeSignIn, URL_BASE, ANON } from './auth.mjs';
 import { createClient } from '@supabase/supabase-js';
 
-const env = Object.fromEntries(
-    readFileSync(new URL('../.env', import.meta.url), 'utf8')
-        .split('\n').filter(l => l.includes('=')).map(l => {
-            const i = l.indexOf('=');
-            return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
-        })
-);
-const URL_BASE = env.VITE_SUPABASE_URL;
-const ANON = env.VITE_SUPABASE_ANON_KEY;
+const signIn = makeSignIn(import.meta.url);
 
 async function api(path, { method = 'GET', body, token } = {}) {
     const res = await fetch(URL_BASE + path, {
@@ -36,12 +28,6 @@ async function api(path, { method = 'GET', body, token } = {}) {
     return { status: res.status, data: text ? JSON.parse(text) : null };
 }
 
-async function signIn() {
-    const res = await fetch(`${URL_BASE}/auth/v1/signup`, {
-        method: 'POST', headers: { apikey: ANON, 'Content-Type': 'application/json' }, body: '{}',
-    });
-    return (await res.json()).access_token;
-}
 
 /** Ждёт события нужного типа не дольше таймаута. */
 function waitFor(events, type, timeoutMs = 8000) {

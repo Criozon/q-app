@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "node --test tests/*.test.mjs",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "test:auth": "node tests/warm-auth.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.50.2",

@@ -11,6 +11,8 @@ import log from '../utils/logger';
 import * as service from '../services/supabaseService';
 import { clearActiveSession } from '../utils/session';
 import { useWakeLock } from '../hooks/useWakeLock';
+import { useTicker } from '../hooks/useTicker';
+import { syncClock, msUntil, formatClock, formatDuration } from '../utils/clock';
 // В Safari на iOS объекта Notification нет вообще — он появляется только
 // в PWA, установленном на домашний экран. Прямое обращение
 // Notification.permission на обычной вкладке iPhone роняет рендер,
@@ -24,6 +26,9 @@ import type { RealtimePayload } from '../services/supabaseService';
 import { errorMessage as toErrorMessage, errorIncludes } from '../utils/errors';
 
 const PAGE_SOURCE = 'WaitPage';
+
+/** За сколько до конца выданного времени предупреждать. */
+const WARN_BEFORE_END_MS = 5 * 60 * 1000;
 
 
 function WaitPage() {
@@ -60,6 +65,10 @@ function WaitPage() {
     // вкладке Safari недоступен, а с погасшим экраном страница выгружается.
     const isAwaitingCall = myInfo?.status === 'waiting' || myInfo?.status === 'called';
     const { isActive: isScreenHeldAwake } = useWakeLock(isAwaitingCall);
+
+    // Идущий сеанс экран не держит намеренно: человек ушёл на сорок минут,
+    // и всё это время гореть экраном — просто посадить батарею.
+    useTicker(1000);
 
     const waitCardClasses = [
         styles.waitCard,
@@ -172,6 +181,10 @@ function WaitPage() {
                 setErrorMessage('Очередь, в которой вы находились, была удалена администратором.');
                 return;
             }
+
+            // Поправка часов раньше данных: по ней считается остаток
+            // времени, а он должен быть верным с первой же отрисовки.
+            syncClock(data.server_now);
 
             setMyInfo(data.member);
             setQueueInfo(data.queue);
@@ -305,6 +318,67 @@ function WaitPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [memberId, queueId]);
 
+    /**
+     * Предупреждения по выданному времени: за пять минут до конца и в сам
+     * момент окончания.
+     *
+     * Честная граница: сработает, только пока страница жива. Запланировать
+     * уведомление на будущий момент веб не умеет — API, который это делал
+     * (Notification Triggers), дальше эксперимента в Chrome не ушёл, а
+     * обычный таймер замораживается, когда вкладка уходит в фон. Зато сам
+     * отсчёт на экране идёт и без связи: момент окончания известен заранее.
+     *
+     * Эффект перезапускается при продлении — timer_ends_at в зависимостях,
+     * поэтому новое время даёт новые предупреждения.
+     */
+    useEffect(() => {
+        if (myInfo?.status !== 'in_service' || !myInfo.timer_ends_at) return;
+
+        const endsAt = myInfo.timer_ends_at;
+        let warnedSoon = false;
+        let warnedOver = false;
+
+        const buzz = () => {
+            // Вибрация — необязательная роскошь: на iOS её нет, а на части
+            // Android она умеет бросаться исключением.
+            try { navigator.vibrate?.([200, 100, 200]); }
+            catch (err) { log(PAGE_SOURCE, 'Вибрация недоступна', err); }
+        };
+
+        const check = () => {
+            const left = msUntil(endsAt);
+            if (left === null) return;
+
+            if (!warnedSoon && left > 0 && left <= WARN_BEFORE_END_MS) {
+                warnedSoon = true;
+                buzz();
+                if (notificationPermission === 'granted') {
+                    void showNotification('Время подходит к концу', {
+                        body: `Осталось ${formatDuration(left)}.`,
+                        tag: `queue-timer-${memberId}`,
+                        url: window.location.pathname,
+                    });
+                }
+            }
+
+            if (!warnedOver && left <= 0) {
+                warnedOver = true;
+                buzz();
+                if (notificationPermission === 'granted') {
+                    void showNotification('Время вышло', {
+                        body: 'Пора возвращаться.',
+                        tag: `queue-timer-${memberId}`,
+                        url: window.location.pathname,
+                    });
+                }
+            }
+        };
+
+        check();
+        const id = setInterval(check, 1000);
+        return () => clearInterval(id);
+    }, [myInfo?.status, myInfo?.timer_ends_at, notificationPermission, memberId]);
+
     useEffect(() => {
         if (myInfo) {
             if (myInfo.status === 'called' && !notificationTriggered.current) {
@@ -339,7 +413,12 @@ function WaitPage() {
                 stopNotificationSound();
             }
 
-            if (myInfo.status === 'waiting' && notificationTriggered.current) {
+            // Кричащий заголовок гасим, как только вызов отработал — в любую
+            // сторону. Раньше сбрасывали только на 'waiting', и принятый под
+            // таймер человек сорок минут катался на лодке со вкладкой
+            // «ВАША ОЧЕРЕДЬ!».
+            if (myInfo.status !== 'called' && myInfo.status !== 'acknowledged'
+                && notificationTriggered.current) {
                 notificationTriggered.current = false;
                 document.title = `Q-App - Ожидание в ${queueInfo?.name || ''}`;
             }
@@ -431,6 +510,32 @@ function WaitPage() {
                          )}
                     </div>
                 )}
+
+                {/* Идёт выданное время: прокат, солярий, картинг. Отсчёт
+                    считается от момента окончания, известного заранее, —
+                    поэтому он идёт и когда связи нет. */}
+                {myInfo?.status === 'in_service' && (() => {
+                    const left = msUntil(myInfo.timer_ends_at);
+                    const isOver = left !== null && left <= 0;
+                    return (
+                        <div className={`${styles.statusBox} ${isOver ? styles.statusTimeOver : styles.statusInService}`}>
+                            {myInfo.note && <p className={styles.sessionNote}>{myInfo.note}</p>}
+                            {left === null ? (
+                                <h2>Идёт обслуживание</h2>
+                            ) : isOver ? (
+                                <>
+                                    <h2>Время вышло</h2>
+                                    <p className={styles.sessionSub}>{formatDuration(left)} назад</p>
+                                </>
+                            ) : (
+                                <>
+                                    <div className={styles.bigTimer}>{formatClock(left)}</div>
+                                    <p className={styles.sessionSub}>осталось</p>
+                                </>
+                            )}
+                        </div>
+                    );
+                })()}
 
                 {myInfo?.status === 'serviced' && (<div className={`${styles.statusBox} ${styles.statusServiced}`}><h2>Ваше обслуживание завершено.</h2></div>)}
                 

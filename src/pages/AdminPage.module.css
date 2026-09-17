@@ -330,7 +330,15 @@
   z-index: 10;
 }
 
+/* Колонкой: действия с вызванным сверху, вызов следующего — отдельной
+   строкой. Закончить с одним и пригласить другого — разные решения. */
 .footerActions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.footerRow {
   display: flex;
   gap: 12px;
 }

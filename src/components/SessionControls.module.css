@@ -1,0 +1,206 @@
+/* --- Приём под таймер --------------------------------------------------- */
+
+.acceptPanel {
+  background-color: var(--card-background);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.noteInput,
+.minutesInput,
+.noteInline {
+  font-family: inherit;
+  /* Меньше 16px — и Safari на iPhone зумит страницу при фокусе. */
+  font-size: 16px;
+  color: var(--text-primary);
+  background-color: var(--background);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.noteInput:focus,
+.minutesInput:focus,
+.noteInline:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+.minutesRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.minutePreset {
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--text-primary);
+  background-color: var(--background);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 14px;
+  /* Палец, а не курсор. */
+  min-height: 44px;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.minutePresetActive {
+  background-color: var(--accent-blue);
+  border-color: var(--accent-blue);
+  color: #fff;
+}
+
+.minutesInput {
+  width: 88px;
+  flex-shrink: 0;
+}
+
+.acceptButton {
+  background-color: var(--accent-blue);
+  width: 100%;
+}
+
+.acceptHint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* --- Идущие сеансы ------------------------------------------------------ */
+
+.sessionSection {
+  margin-bottom: 24px;
+}
+
+.sessionTitle {
+  font-size: 15px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+}
+
+.sessionList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sessionCard {
+  padding: 12px 16px !important;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-left: 4px solid var(--accent-blue);
+  transition: all 0.3s ease;
+}
+
+/* Просрочка должна бросаться в глаза через всю лодочную станцию.
+   Два класса в селекторе намеренно: фон иначе перебивается стилем Card,
+   у которого та же специфичность, а в сборке он оказывается ниже. */
+.sessionCard.overdueCard {
+  border-left-color: var(--accent-red);
+  background-color: #fff1f0;
+}
+
+.sessionInfo {
+  flex-grow: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sessionName {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.noteInline {
+  padding: 6px 10px;
+  font-size: 15px;
+}
+
+.timerText,
+.overdueText,
+.noTimer {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  /* Моноширинные цифры: иначе отсчёт дёргается на каждой секунде. */
+  font-variant-numeric: tabular-nums;
+}
+
+.timerText {
+  color: var(--accent-blue);
+}
+
+.overdueText {
+  color: var(--accent-red);
+}
+
+.noTimer {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.sessionActions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.extendButton {
+  background-color: #6e6e73 !important;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 15px;
+  padding: 8px 10px !important;
+  width: auto !important;
+}
+
+.finishButton {
+  background-color: var(--accent-green) !important;
+  padding: 8px !important;
+  width: auto !important;
+}
+
+/* Свёрнутое состояние: в обычной очереди выдача под таймер не нужна,
+   и занимать ею экран незачем — остаётся одна тихая строчка. */
+.expandButton {
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--text-secondary);
+  background: none;
+  border: 1px dashed var(--border-color);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 24px;
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.expandButton:hover {
+  color: var(--accent-blue);
+  border-color: var(--accent-blue);
+}

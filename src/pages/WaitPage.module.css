@@ -253,3 +253,36 @@
   font-size: 0.9em;
   text-align: left;
 }
+
+/* --- Идущее выданное время --------------------------------------------- */
+
+.statusInService {
+  background-color: var(--accent-blue);
+}
+
+/* Красный, потому что это уже не информация, а просьба вернуться. */
+.statusTimeOver {
+  background-color: var(--accent-red);
+}
+
+.sessionNote {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: white;
+}
+
+.bigTimer {
+  font-size: 56px;
+  font-weight: 700;
+  line-height: 1.1;
+  /* Моноширинные цифры: иначе отсчёт дёргается на каждой секунде. */
+  font-variant-numeric: tabular-nums;
+  color: white;
+}
+
+.sessionSub {
+  margin: 4px 0 0;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.85);
+}
