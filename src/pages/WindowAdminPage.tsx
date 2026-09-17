@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useWindowAdmin } from '../hooks/useWindowAdmin';
 import type { ConfirmationState, MemberStatus, WindowAdminData } from '../types/domain';
-import { Check, PhoneCall, Undo2, Users, QrCode, Share2, UserX } from 'lucide-react';
+import { Check, PhoneCall, Undo2, Users, QrCode, Share2, UserX, RefreshCw } from 'lucide-react';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import Spinner from '../components/Spinner';
@@ -16,7 +16,7 @@ type Member = WindowAdminData['members'][number];
 
 function WindowAdminPage() {
     const {
-        windowInfo, queueInfo, members, assignedMember, loading, error, isProcessing,
+        windowInfo, queueInfo, members, assignedMember, loading, error, errorKind, isProcessing, loadInitialData,
         isJoinModalOpen, joinUrl, qrCodeUrl, setIsJoinModalOpen,
         callNext, callSpecific, completeService, returnToQueue,
         isQueueDeleted
@@ -78,8 +78,21 @@ function WindowAdminPage() {
     if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spinner /></div>;
     
     if (error) return (
-        <div className={`container ${styles.pageWrapper}`} style={{paddingTop: '60px'}}>
-             <div className={styles.errorContainer}>{error}</div>
+        <div className={`container ${styles.pageWrapper}`} style={{paddingTop: '60px', textAlign: 'center'}}>
+            <div className={styles.errorContainer}>
+                {errorKind === 'network'
+                    ? 'Не удалось связаться с сервером. Проверьте соединение — данные никуда не делись.'
+                    : error}
+            </div>
+            {/* Сетевой сбой — повод попробовать ещё раз, а не тупик. */}
+            {errorKind === 'network' && (
+                <Button
+                    onClick={() => { void loadInitialData(true); }}
+                    style={{ marginTop: '20px' }}
+                >
+                    <RefreshCw size={18} /> Попробовать снова
+                </Button>
+            )}
         </div>
     );
 

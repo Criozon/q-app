@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import QRCode from 'qrcode';
-import { Settings, QrCode, UserX, PauseCircle, PlayCircle, Users, Share2, Link2, Check, Info, PhoneCall, Undo2, Plus, Trash2, Home, Megaphone, BarChart3, Send } from 'lucide-react';
+import { Settings, QrCode, UserX, PauseCircle, PlayCircle, Users, Share2, Link2, Check, Info, PhoneCall, Undo2, Plus, Trash2, Home, Megaphone, BarChart3, Send, RefreshCw } from 'lucide-react';
 import { useQueue } from '../hooks/useQueue';
 import * as service from '../services/supabaseService';
 import { useMyQueues } from '../hooks/useMyQueues';
@@ -26,7 +26,7 @@ const PAGE_SOURCE = 'MasterAdminPage';
 
 function AdminPage() {
     const {
-      queue, members, windows, services, loading, error, qrCodeUrl, joinUrl,
+      queue, members, windows, services, loading, error, errorKind, qrCodeUrl, joinUrl,
       waitingMembersCount, setQueue, loadQueueData
     } = useQueue();
 
@@ -257,7 +257,34 @@ function AdminPage() {
     const getStatusText = useCallback((member: AdminMember) => { switch (member.status) { case 'called': return isSimpleMode ? 'Вызывается' : `Вызывается в: ${member.window_name?.name || '...'}`; case 'acknowledged': return isSimpleMode ? 'Идет к окну' : `Идет в: ${member.window_name?.name || '...'}`; case 'serviced': return 'Обслужен'; default: return 'Ожидает'; } }, [isSimpleMode]);
     const assignedMemberInSimpleMode = useMemo(() => isSimpleMode ? members.find(m => m.assigned_window_id === windows[0]?.id && (m.status === 'called' || m.status === 'acknowledged')) : null, [members, windows, isSimpleMode]);
     if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spinner /></div>;
-    if (error) return <div className={`container ${styles.pageWrapper}`} style={{paddingTop: '60px', textAlign: 'center'}}><div className={styles.emptyState}><h3 className={styles.emptyStateTitle}>Очередь не найдена</h3><p className={styles.emptyStateText}>Возможно, она была удалена или вы перешли по неверной ссылке.</p><Button onClick={() => navigate('/')} className={styles.emptyStateButton}><Home size={18} />Вернуться на главную</Button></div></div>;
+    // Сетевой сбой раньше показывался как «очередь не найдена» — человек
+    // решал, что потерял очередь, хотя она на месте. Теперь причины разведены.
+    if (error) return (
+        <div className={`container ${styles.pageWrapper}`} style={{ paddingTop: '60px', textAlign: 'center' }}>
+            <div className={styles.emptyState}>
+                {errorKind === 'network' ? (
+                    <>
+                        <h3 className={styles.emptyStateTitle}>Нет связи с сервером</h3>
+                        <p className={styles.emptyStateText}>
+                            Очередь никуда не делась — не удалось до неё достучаться.
+                            Проверьте соединение и попробуйте ещё раз.
+                        </p>
+                        <Button onClick={() => { void loadQueueData(true); }} className={styles.emptyStateButton}>
+                            <RefreshCw size={18} />Попробовать снова
+                        </Button>
+                    </>
+                ) : (
+                    <>
+                        <h3 className={styles.emptyStateTitle}>Очередь не найдена</h3>
+                        <p className={styles.emptyStateText}>Возможно, она была удалена или вы перешли по неверной ссылке.</p>
+                        <Button onClick={() => navigate('/')} className={styles.emptyStateButton}>
+                            <Home size={18} />Вернуться на главную
+                        </Button>
+                    </>
+                )}
+            </div>
+        </div>
+    );
 
 
     return (
