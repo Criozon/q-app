@@ -51,6 +51,20 @@ export const formatDuration = (ms: number): string => {
     return rest === 0 ? `${hours} ч` : `${hours} ч ${rest} мин`;
 };
 
+/**
+ * Короткий вид для значка на карточке: «12:04», а больше часа — «1:19».
+ *
+ * Секунды нужны на исходе времени, а когда впереди больше часа, они
+ * только отнимают ширину у имени участника в тесной строке карточки.
+ */
+export const formatClockShort = (ms: number): string => {
+    const total = Math.max(0, Math.round(Math.abs(ms) / 1000));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    if (hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}`;
+    return `${String(minutes).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+};
+
 /** Таймер крупно: «12:04» — минуты и секунды, как на секундомере. */
 export const formatClock = (ms: number): string => {
     const total = Math.max(0, Math.round(Math.abs(ms) / 1000));
