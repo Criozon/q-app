@@ -9,6 +9,12 @@ export interface QueueContextValue {
     services: ServiceWithWindows[];
     loading: boolean;
     error: string | null;
+    /**
+     * Природа ошибки. Сетевой сбой и «очереди нет» выглядят для кода
+     * одинаково, но человеку нужно сказать разное: в первом случае —
+     * «попробуйте ещё раз», во втором — «ссылка неверна».
+     */
+    errorKind: 'not-found' | 'network' | null;
     qrCodeUrl: string;
     joinUrl: string;
     waitingMembersCount: number;

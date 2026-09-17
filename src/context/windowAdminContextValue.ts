@@ -10,6 +10,7 @@ export interface WindowAdminContextValue {
     assignedMember: Member | undefined;
     loading: boolean;
     error: string | null;
+    errorKind: 'not-found' | 'network' | null;
     isProcessing: boolean;
     isJoinModalOpen: boolean;
     joinUrl: string;

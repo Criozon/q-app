@@ -7,6 +7,12 @@ import * as service from '../services/supabaseService';
 import type { RealtimePayload } from '../services/supabaseService';
 import type { Queue, AdminMember, WindowWithServices, ServiceWithWindows } from '../types/domain';
 import { errorMessage } from '../utils/errors';
+import { withRetry } from '../utils/retry';
+
+/** Очереди с таким ключом нет — в отличие от «не смогли дозвониться». */
+class QueueNotFound extends Error {
+  constructor() { super('Очередь не найдена или была удалена.'); this.name = 'QueueNotFound'; }
+}
 import { QueueContext } from './QueueContext';
 
 const PAGE_SOURCE = 'QueueContext';
@@ -19,6 +25,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
   const [services, setServices] = useState<ServiceWithWindows[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorKind, setErrorKind] = useState<'not-found' | 'network' | null>(null);
   const [qrCodeUrl, setQrCodeUrl] = useState('');
   const [joinUrl, setJoinUrl] = useState('');
 
@@ -26,13 +33,19 @@ export function QueueProvider({ children }: { children: ReactNode }) {
     if (!secretKey) {
         return;
     }
-    if (isInitialLoad) setError(null);
+    if (isInitialLoad) { setError(null); setErrorKind(null); }
     try {
       // Секретная ссылка обменивается на пропуск, привязанный к анонимной
       // сессии. Поэтому ссылка по-прежнему работает на любом устройстве,
       // но прямой доступ к таблицам есть только у предъявившего ключ.
-      const { data: qData, error: qError } = await service.claimQueueAdmin(secretKey);
-      if (qError || !qData) throw new Error("Очередь не найдена или была удалена.");
+      //
+      // Первая загрузка повторяется при сбое: раньше одна заминка в сети
+      // оставляла администратора на экране ошибки до ручной перезагрузки.
+      const qData = await withRetry(async () => {
+        const { data, error } = await service.claimQueueAdmin(secretKey);
+        if (error || !data) throw new QueueNotFound();
+        return data;
+      }, { attempts: isInitialLoad ? 3 : 1, label: 'загрузка очереди' });
       setQueue(qData);
 
       const [membersRes, windowsRes, servicesRes] = await Promise.all([
@@ -59,6 +72,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       log(PAGE_SOURCE, 'Ошибка при загрузке:', err);
       if (isInitialLoad) {
+        setErrorKind(err instanceof QueueNotFound ? 'not-found' : 'network');
         setError(errorMessage(err));
         setQueue(null);
       }
@@ -117,12 +131,13 @@ export function QueueProvider({ children }: { children: ReactNode }) {
     services,
     loading,
     error,
+    errorKind,
     qrCodeUrl,
     joinUrl,
     waitingMembersCount,
     setQueue,
     loadQueueData
-  }), [queue, members, windows, services, loading, error, qrCodeUrl, joinUrl, waitingMembersCount, loadQueueData]);
+  }), [queue, members, windows, services, loading, error, errorKind, qrCodeUrl, joinUrl, waitingMembersCount, loadQueueData]);
 
   return (
     <QueueContext.Provider value={value}>

@@ -8,6 +8,12 @@ import * as service from '../services/supabaseService';
 import type { RealtimePayload } from '../services/supabaseService';
 import type { WindowAdminData } from '../types/domain';
 import { errorMessage } from '../utils/errors';
+import { withRetry } from '../utils/retry';
+
+/** Панели с таким ключом нет — в отличие от «не смогли дозвониться». */
+class WindowNotFound extends Error {
+    constructor() { super('Панель управления не найдена. Неверный ключ доступа.'); this.name = 'WindowNotFound'; }
+}
 import { WindowAdminContext } from './WindowAdminContext';
 
 const PAGE_SOURCE = 'WindowAdminContext';
@@ -21,6 +27,7 @@ export function WindowAdminProvider({ children }: { children: ReactNode }) {
     const [members, setMembers] = useState<Member[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [errorKind, setErrorKind] = useState<'not-found' | 'network' | null>(null);
     const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
     const [joinUrl, setJoinUrl] = useState('');
     const [qrCodeUrl, setQrCodeUrl] = useState('');
@@ -32,20 +39,26 @@ export function WindowAdminProvider({ children }: { children: ReactNode }) {
         if (isInitialLoad) {
             setLoading(true);
             setError(null);
+            setErrorKind(null);
         }
         try {
             // Сначала обмениваем ключ окна на пропуск — без него политики
             // не пустят ни к таблицам, ни к Realtime-событиям очереди.
-            if (!shortKey) throw new Error('Панель управления не найдена. Неверный ключ доступа.');
-            const { error: claimError } = await service.claimWindowOperator(shortKey);
-            if (claimError) throw new Error("Панель управления не найдена. Неверный ключ доступа.");
+            if (!shortKey) throw new WindowNotFound();
 
-            const { data, error: rpcError } = await service.getWindowAdminInitialData(shortKey);
-            if (rpcError) throw rpcError;
+            // Первая загрузка повторяется: одна сетевая заминка не должна
+            // оставлять оператора наедине с экраном ошибки.
+            const data = await withRetry(async () => {
+                const { error: claimError } = await service.claimWindowOperator(shortKey);
+                if (claimError) throw new WindowNotFound();
+                const { data: payload, error: rpcError } = await service.getWindowAdminInitialData(shortKey);
+                if (rpcError) throw rpcError;
+                return payload;
+            }, { attempts: isInitialLoad ? 3 : 1, label: 'загрузка панели окна' });
             
             const { windowInfo: wData, queueInfo: qData, members: mData } = data;
 
-            if (!wData) throw new Error("Панель управления не найдена. Неверный ключ доступа.");
+            if (!wData) throw new WindowNotFound();
             
             if (!qData) {
                 setWindowInfo(wData);
@@ -68,7 +81,10 @@ export function WindowAdminProvider({ children }: { children: ReactNode }) {
             }
         } catch (err) {
             log(PAGE_SOURCE, 'Ошибка при загрузке:', err);
-            if (isInitialLoad) setError(errorMessage(err));
+            if (isInitialLoad) {
+                setErrorKind(err instanceof WindowNotFound ? 'not-found' : 'network');
+                setError(errorMessage(err));
+            }
         } finally {
             if (isInitialLoad) setLoading(false);
         }
@@ -121,8 +137,8 @@ export function WindowAdminProvider({ children }: { children: ReactNode }) {
     const assignedMember = useMemo(() => members.find(m => m.assigned_window_id === windowInfo?.id && (m.status === 'called' || m.status === 'acknowledged')), [members, windowInfo]);
     
     const value = useMemo(() => ({ 
-        windowInfo, queueInfo, members, assignedMember, loading, error, isProcessing, isJoinModalOpen, joinUrl, qrCodeUrl, isQueueDeleted, setIsJoinModalOpen, loadInitialData, callNext, callSpecific, completeService, returnToQueue 
-    }), [windowInfo, queueInfo, members, assignedMember, loading, error, isProcessing, isJoinModalOpen, joinUrl, qrCodeUrl, isQueueDeleted, loadInitialData, callNext, callSpecific, completeService, returnToQueue]);
+        windowInfo, queueInfo, members, assignedMember, loading, error, errorKind, isProcessing, isJoinModalOpen, joinUrl, qrCodeUrl, isQueueDeleted, setIsJoinModalOpen, loadInitialData, callNext, callSpecific, completeService, returnToQueue 
+    }), [windowInfo, queueInfo, members, assignedMember, loading, error, errorKind, isProcessing, isJoinModalOpen, joinUrl, qrCodeUrl, isQueueDeleted, loadInitialData, callNext, callSpecific, completeService, returnToQueue]);
     
     return (<WindowAdminContext.Provider value={value}>{children}</WindowAdminContext.Provider>);
 }
