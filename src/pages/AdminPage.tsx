@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import QRCode from 'qrcode';
-import { Settings, QrCode, UserX, PauseCircle, PlayCircle, Users, Share2, Link2, Check, Info, PhoneCall, Undo2, Plus, Trash2, Home, Megaphone, BarChart3, Send, RefreshCw } from 'lucide-react';
+import { Settings, QrCode, PauseCircle, PlayCircle, Users, Share2, Link2, Check, Info, PhoneCall, Plus, Trash2, Home, Megaphone, BarChart3, Send, RefreshCw } from 'lucide-react';
 import { useQueue } from '../hooks/useQueue';
 import * as service from '../services/supabaseService';
 import { useMyQueues } from '../hooks/useMyQueues';
@@ -18,8 +18,8 @@ import Input from '../components/Input';
 import ServiceRow from '../components/ServiceRow';
 import NumberStepper from '../components/NumberStepper';
 import homeStyles from './HomePage.module.css';
-import { AcceptPanel, SessionList } from '../components/SessionControls';
-import { byTimeLeft } from '../utils/clock';
+import MemberCard from '../components/MemberCard';
+import { byWorkOrder } from '../utils/memberOrder';
 import styles from './AdminPage.module.css';
 import log from '../utils/logger';
 import type { ConfirmationState, ServiceDraft, QueueStats, Announcement, AdminMember, WindowWithServices } from '../types/domain';
@@ -167,17 +167,19 @@ function AdminPage() {
     }, []);
 
     // Выдача под таймер: очередь с одним окном ведётся прямо отсюда,
-    // и лодочнику незачем открывать отдельную панель окна.
-    const startSession = useCallback(async (memberId: string, note: string | null, minutes: number | null) => {
+    // и лодочнику незачем открывать отдельную панель окна. Окно передаём,
+    // когда оно одно — иначе принятый не попадёт в панель этого окна.
+    const startTimer = useCallback(async (memberId: string, minutes: number) => {
         setIsProcessing(true);
         try {
-            await service.startMemberSession(memberId, note, minutes);
+            const windowId = windows.length === 1 ? windows[0].id : null;
+            await service.startMemberSession(memberId, null, minutes, windowId);
         } catch {
-            toast.error('Не удалось принять участника.');
+            toast.error('Не удалось запустить время.');
         } finally {
             setIsProcessing(false);
         }
-    }, []);
+    }, [windows]);
 
     const extendTimer = useCallback(async (memberId: string, minutes: number) => {
         setIsProcessing(true);
@@ -290,12 +292,10 @@ function AdminPage() {
     const handleRemoveMember = useCallback((member: AdminMember) => { setConfirmation({ isOpen: true, title: 'Удалить участника?', message: <p>Вы уверены, что хотите удалить <strong>{member.member_name} ({member.display_code})</strong> из очереди?</p>, confirmText: 'Да, удалить', isDestructive: true, onConfirm: async () => { await service.deleteMember(member.id); toast.success(`Участник ${member.member_name} удален.`);},});}, []);
     const handleDeleteCurrentQueue = useCallback(() => { if (!queue) return; setConfirmation({ isOpen: true, title: 'Удалить очередь?', message: <p>Вы уверены, что хотите удалить очередь <strong>"{queue.name}"</strong>? Это действие необратимо.</p>, confirmText: 'Да, удалить', isDestructive: true, onConfirm: () => { const toastId = toast.loading(`Удаляем очередь "${queue.name}"...`); service.deleteQueue(queue.id).then(({error}) => { if (error) toast.error(`Не удалось удалить очередь "${queue.name}".`, { id: toastId }); else { setMyQueues(prev => prev.filter(q => q.id !== queue.id)); toast.success(`Очередь "${queue.name}" удалена.`, { id: toastId }); navigate('/'); } }); } }); }, [queue, navigate, setMyQueues]);
     const handleShare = useCallback(async (shareData: ShareData & { key?: string }) => { if (navigator.share) { try { await navigator.share(shareData); } catch (err) { log(PAGE_SOURCE, 'Ошибка Web Share API:', err); } } else { navigator.clipboard.writeText(shareData.url ?? '').then(() => { setCopiedKey(shareData.key ?? null); setTimeout(() => setCopiedKey(null), 2000); }).catch(() => toast.error("Не удалось скопировать ссылку.")); } }, []);
-    const getStatusText = useCallback((member: AdminMember) => { switch (member.status) { case 'called': return isSimpleMode ? 'Вызывается' : `Вызывается в: ${member.window_name?.name || '...'}`; case 'acknowledged': return isSimpleMode ? 'Идет к окну' : `Идет в: ${member.window_name?.name || '...'}`; case 'in_service': return member.note ? `На руках: ${member.note}` : 'Принят, время идёт'; case 'serviced': return 'Обслужен'; default: return 'Ожидает'; } }, [isSimpleMode]);
-    const activeMembers = useMemo(
-        () => members.filter(m => m.status === 'in_service').slice().sort(byTimeLeft),
-        [members]);
+    const getStatusText = useCallback((member: AdminMember) => { switch (member.status) { case 'called': return isSimpleMode ? 'Вызывается' : `Вызывается в: ${member.window_name?.name || '...'}`; case 'acknowledged': return isSimpleMode ? 'Идет к окну' : `Идет в: ${member.window_name?.name || '...'}`; case 'in_service': return 'На руках'; case 'serviced': return 'Обслужен'; default: return 'Ожидает'; } }, [isSimpleMode]);
+    // Сверху то, что требует внимания: горящие таймеры, потом вызванные.
+    const sortedMembers = useMemo(() => members.slice().sort(byWorkOrder), [members]);
 
-    const assignedMemberInSimpleMode = useMemo(() => isSimpleMode ? members.find(m => m.assigned_window_id === windows[0]?.id && (m.status === 'called' || m.status === 'acknowledged')) : null, [members, windows, isSimpleMode]);
     if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spinner /></div>;
     // Сетевой сбой раньше показывался как «очередь не найдена» — человек
     // решал, что потерял очередь, хотя она на месте. Теперь причины разведены.
@@ -334,6 +334,7 @@ function AdminPage() {
                     <div className={styles.headerContent}>
                         <div className={styles.leftActions}>
                             <button onClick={() => setIsSettingsModalOpen(true)} className={styles.controlButton} title="Настройки услуг и окон"><Settings size={22} color="var(--accent-blue)" /></button>
+                            <button onClick={handleOpenStats} className={styles.controlButton} title="Итоги очереди"><BarChart3 size={22} color="var(--accent-blue)" /></button>
                             <button onClick={handleDeleteCurrentQueue} className={`${styles.controlButton} ${styles.deleteButton}`} title="Удалить очередь"><Trash2 size={22} /></button>
                         </div>
                         <div className={styles.headerCenter}>
@@ -405,39 +406,53 @@ function AdminPage() {
                     </Card>
                 </Section>
 
-                {/* Приём под таймер: для проката, солярия, картинга — там,
-                    где человек уходит с чем-то на время. Обычной очереди не
-                    мешает: в ней просто жмут «Завершить» внизу. */}
-                {isSimpleMode && assignedMemberInSimpleMode && (
-                    <AcceptPanel
-                        onAccept={(note, minutes) => startSession(assignedMemberInSimpleMode.id, note, minutes)}
-                        isProcessing={isProcessing}
-                        resetKey={assignedMemberInSimpleMode.id}
-                        defaultExpanded={activeMembers.length > 0}
-                    />
-                )}
-
-                <SessionList
-                    members={activeMembers}
-                    isProcessing={isProcessing}
-                    onExtend={extendTimer}
-                    onFinish={completeService}
-                    onSaveNote={saveNote}
-                />
-
                 <Section title="Общая очередь">
-                    <div className={styles.memberList}>{members.filter(m => m.status !== 'in_service').length > 0 ? (members.filter(m => m.status !== 'in_service').map(member => (<Card key={member.id} className={`${styles.memberCard} ${member.status === 'called' ? styles.called : ''} ${member.status === 'acknowledged' ? styles.acknowledged : ''} ${member.status === 'serviced' ? styles.serviced : ''} ${member.status === 'called' ? 'called-animation' : ''}`}><div className={styles.memberInfo}><p className={styles.memberName}>{member.display_code || `#${member.ticket_number}`} - {member.member_name}</p>{member.service_name?.name && (<p className={styles.memberService}>{member.service_name.name}</p>)}<p className={styles.memberStatus}>{getStatusText(member)}</p></div><div className={styles.memberActions}>{isSimpleMode && member.status === 'waiting' && (<Button onClick={() => callMember(member.id, windows[0].id)} className={`${styles.actionButton} ${styles.callButton}`} title="Вызвать участника"><PhoneCall size={20} /></Button>)}<Button onClick={() => handleRemoveMember(member)} className={`${styles.actionButton} ${styles.removeButton}`} title="Удалить участника"><UserX size={20} /></Button></div></Card>))) : (<div className={styles.emptyState}><Users size={48} className={styles.emptyStateIcon} /><h3 className={styles.emptyStateTitle}>В очереди пока никого нет</h3><p className={styles.emptyStateText}>Поделитесь QR-кодом или ссылкой, чтобы люди могли присоединиться.</p><Button onClick={() => setIsJoinModalOpen(true)} className={styles.emptyStateButton}><QrCode size={18} />Показать QR-код</Button></div>)}</div>
+                    {/* Всё управление — на карточках: отдельные кнопки внизу
+                        относились к «текущему вызванному» и не давали работать
+                        выборочно. По очереди может идти лодка, а освободиться
+                        катамаран — и позвать нужно того, кто дальше. */}
+                    <div className={styles.memberList}>
+                        {sortedMembers.length > 0 ? sortedMembers.map(member => (
+                            <MemberCard
+                                key={member.id}
+                                member={{
+                                    id: member.id,
+                                    display_code: member.display_code,
+                                    ticket_number: member.ticket_number,
+                                    member_name: member.member_name,
+                                    // В админке связи приходят объектами из
+                                    // PostgREST-embed, карточке нужна строка.
+                                    service_name: member.service_name?.name ?? null,
+                                    status: member.status,
+                                    note: member.note,
+                                    timer_ends_at: member.timer_ends_at,
+                                }}
+                                statusText={getStatusText(member)}
+                                isProcessing={isProcessing}
+                                highlighted
+                                onCall={isSimpleMode ? (id) => callMember(id, windows[0].id) : undefined}
+                                onReturn={returnToQueue}
+                                onFinish={completeService}
+                                onRemove={() => handleRemoveMember(member)}
+                                onStartTimer={startTimer}
+                                onExtendTimer={extendTimer}
+                                onSaveNote={saveNote}
+                            />
+                        )) : (
+                            <div className={styles.emptyState}>
+                                <Users size={48} className={styles.emptyStateIcon} />
+                                <h3 className={styles.emptyStateTitle}>В очереди пока никого нет</h3>
+                                <p className={styles.emptyStateText}>Поделитесь QR-кодом или ссылкой, чтобы люди могли присоединиться.</p>
+                                <Button onClick={() => setIsJoinModalOpen(true)} className={styles.emptyStateButton}><QrCode size={18} />Показать QR-код</Button>
+                            </div>
+                        )}
+                    </div>
                 </Section>
 
-                <Section title="Итоги">
-                    <Button onClick={handleOpenStats} className={styles.statsButton}>
-                        <BarChart3 size={18} /> Показать статистику
-                    </Button>
-                </Section>
             </main>
 
             {isSimpleMode && (
-                <footer className={styles.footer}><div className={`container ${styles.footerActions}`}>{assignedMemberInSimpleMode && (<div className={styles.footerRow}><Button onClick={() => returnToQueue(assignedMemberInSimpleMode.id)} isLoading={isProcessing} className={styles.returnButton}><Undo2 size={20} /> Вернуть</Button><Button onClick={() => completeService(assignedMemberInSimpleMode.id)} isLoading={isProcessing} className={styles.completeButton}><Check size={20} /> Завершить</Button></div>)}<Button onClick={callNextInSimpleMode} isLoading={isProcessing} disabled={waitingMembersCount === 0 || queue?.status === 'paused'} className={styles.callNextButton}><PhoneCall size={20} /> Вызвать следующего</Button></div></footer>
+                <footer className={styles.footer}><div className={`container ${styles.footerActions}`}><Button onClick={callNextInSimpleMode} isLoading={isProcessing} disabled={waitingMembersCount === 0 || queue?.status === 'paused'} className={styles.callNextButton}><PhoneCall size={20} /> Вызвать следующего</Button></div></footer>
             )}
 
             <Modal isOpen={isJoinModalOpen} onClose={() => setIsJoinModalOpen(false)}><div className={styles.modalContent}><p className={styles.modalInstruction}>Поделитесь QR-кодом или ссылкой, чтобы люди могли присоединиться.</p>{qrCodeUrl ? <img src={qrCodeUrl} alt="QR Code" className={styles.qrImage} /> : <Spinner />}<p className={styles.joinLink}>{joinUrl || 'Генерация ссылки...'}</p><Button onClick={() => handleShare({url: joinUrl, title: `Вход в очередь: ${queue?.name}`, text: 'Отсканируйте QR или перейдите по ссылке, чтобы войти в очередь.', key: 'join-link' })}>{copiedKey === 'join-link' ? <><Check size={18} /> Скопировано!</> : <><Share2 size={18} /> Поделиться</>}</Button></div></Modal>

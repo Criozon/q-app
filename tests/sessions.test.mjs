@@ -172,6 +172,58 @@ describe('Q-App: выдача под таймер', () => {
         assert.ok(data.server_now, 'без server_now отсчёт поедет на кривых часах устройства');
     });
 
+    test('запуск времени без вызова привязывает участника к окну', async () => {
+        // Управление переехало на карточки: время можно запустить кому
+        // угодно, минуя вызов. Без привязки такой участник пропал бы
+        // из панели окна — она ищет своих именно по ней.
+        const guest = await join('Сразу на воду');
+        const { data } = await api('/rest/v1/rpc/start_member_session', {
+            method: 'POST', token: organizer,
+            body: { p_member_id: guest.id, p_note: 'Сап 4', p_minutes: 20, p_window_id: windowId },
+        });
+
+        assert.equal(data.status, 'in_service');
+        assert.equal(data.assigned_window_id, windowId);
+        assert.ok(data.called_at, 'без called_at не посчитать длительность, а значит и прогноз');
+
+        const panel = await api('/rest/v1/rpc/get_window_admin_initial_data', {
+            method: 'POST', token: organizer, body: { p_short_key: windowKey },
+        });
+        assert.ok(panel.data.members.some(m => m.id === guest.id),
+            'принятый без вызова не должен пропадать из панели окна');
+    });
+
+    test('пометка у ожидающего не стирается обычным обновлением', async () => {
+        // Триггер сброса срабатывает на каждое обновление строки, поэтому
+        // проверять «статус равен waiting» мало — нужна именно смена
+        // статуса. Иначе пометка, поставленная заранее, исчезала молча.
+        const guest = await join('Помечен заранее');
+        await api(`/rest/v1/queue_members?id=eq.${guest.id}`, {
+            method: 'PATCH', token: organizer, body: { note: 'Катамаран для Ивана' },
+        });
+        const after = await api(`/rest/v1/queue_members?id=eq.${guest.id}&select=status,note`,
+            { token: organizer });
+        assert.equal(after.data[0].status, 'waiting');
+        assert.equal(after.data[0].note, 'Катамаран для Ивана',
+            'пометку можно поставить до вызова, и она должна пережить запись');
+    });
+
+    test('запуск времени не стирает уже набранную пометку', async () => {
+        // Пометку часто пишут до того, как запускают время: сначала
+        // записали, какую лодку выдали, потом отсчитали минуты.
+        const guest = await join('Сначала пометка');
+        await api(`/rest/v1/queue_members?id=eq.${guest.id}`, {
+            method: 'PATCH', token: organizer, body: { note: 'Лодка 7' },
+        });
+
+        const { data } = await api('/rest/v1/rpc/start_member_session', {
+            method: 'POST', token: organizer,
+            body: { p_member_id: guest.id, p_minutes: 30, p_window_id: windowId },
+        });
+        assert.equal(data.note, 'Лодка 7', 'запуск времени не должен стирать пометку');
+        assert.ok(data.timer_ends_at);
+    });
+
     test('участник видит свою пометку и своё время', async () => {
         const me = await join('Смотрящий', guest);
         await api('/rest/v1/rpc/start_member_session', {

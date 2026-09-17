@@ -20,25 +20,31 @@
 
 .headerContent {
   display: flex;
-  align-items: center; 
-  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
 }
 
+/* Заголовок — обычная колонка между группами кнопок, а не абсолютно
+   отцентрованный блок: с тремя кнопками слева он наезжал на корзину.
+   Длинное название очереди лучше подрезать, чем закрыть управление. */
 .headerCenter {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  flex: 1 1 auto;
+  min-width: 0;
   text-align: center;
-  flex-shrink: 0;
 }
 
 .headerTitle {
   font-size: 17px;
   font-weight: 600;
   margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .queueCount {
+  /* В одну строку: перенос делал шапку выше на целую строку. */
+  white-space: nowrap;
   font-size: 13px;
   color: var(--text-secondary);
   margin-top: 2px;
@@ -52,8 +58,8 @@
 .leftActions, .rightActions {
     display: flex;
     align-items: center;
-    gap: 8px;
-    width: 120px;
+    gap: 0;
+    flex-shrink: 0;
 }
 
 .leftActions {
@@ -69,8 +75,9 @@
   border: none;
   padding: 0;
   cursor: pointer;
+  /* Высота — под палец; ширину ужимаем, кнопок в шапке стало больше. */
   height: 44px;
-  width: 44px;
+  width: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -165,89 +172,6 @@
   gap: 12px;
 }
 
-.memberCard {
-  padding: 12px 16px !important; 
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  transition: all 0.3s ease;
-  border-left: 4px solid transparent;
-}
-
-.memberCard.called {
-  border-left-color: var(--accent-green);
-}
-
-.memberCard.acknowledged {
-  border-left-color: var(--accent-blue);
-  background-color: #e3f2fd; 
-}
-
-.memberCard.serviced {
-  opacity: 0.4;
-}
-
-.memberInfo p {
-  margin: 0;
-}
-
-.memberName {
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.memberService {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--accent-blue);
-    margin-top: 4px !important;
-}
-
-.memberCard.serviced .memberName {
-  text-decoration: line-through;
-}
-
-.memberStatus {
-  font-size: 14px;
-  color: var(--text-secondary);
-  margin-top: 4px;
-}
-
-.memberActions {
-  display: flex;
-  gap: 8px;
-}
-
-.actionButton {
-  /* 44px — минимальный размер цели нажатия по рекомендации Apple.
-     Иконочные кнопки стоят вплотную к соседям, и промах по «удалить»
-     на телефоне обходится дорого. */
-  padding: 8px !important;
-  width: auto !important;
-  min-width: 44px !important;
-  min-height: 44px !important;
-}
-
-.callButton {
-  background-color: #6e6e73 !important;
-  transition: background-color 0.2s;
-}
-
-.callButton:hover:not(:disabled) {
-  background-color: var(--accent-green) !important;
-}
-
-.removeButton {
-  background-color: #e5e5e5 !important;
-  color: var(--text-primary) !important;
-  transition: background-color 0.2s, color 0.2s;
-}
-
-.removeButton:hover:not(:disabled) {
-    background-color: #d1d1d6 !important;
-    color: var(--accent-red) !important;
-}
-
 .emptyState {
     text-align: center;
     padding: 60px 20px;
@@ -338,30 +262,10 @@
   gap: 12px;
 }
 
-.footerRow {
-  display: flex;
-  gap: 12px;
-}
-
 .callNextButton,
-.completeButton {
-  width: 100%;
-}
 
 .callNextButton {
   background-color: var(--accent-blue);
-}
-
-.completeButton {
-  background-color: var(--accent-green);
-  flex-grow: 1;
-}
-
-.returnButton {
-  background-color: #8e8e93 !important;
-  width: auto;
-  flex-grow: 0;
-  flex-shrink: 0;
 }
 
 .settingsGridInModal {
@@ -457,10 +361,6 @@
 
 .announceDelete:hover {
   color: var(--accent-red, #ff3b30);
-}
-
-.statsButton {
-  width: 100%;
 }
 
 .statsGrid {

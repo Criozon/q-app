@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useWindowAdmin } from '../hooks/useWindowAdmin';
 import type { ConfirmationState, MemberStatus, WindowAdminData } from '../types/domain';
-import { Check, PhoneCall, Undo2, Users, QrCode, Share2, UserX, RefreshCw } from 'lucide-react';
-import Card from '../components/Card';
+import { Check, PhoneCall, Users, QrCode, Share2, RefreshCw } from 'lucide-react';
 import Button from '../components/Button';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
@@ -10,17 +9,18 @@ import ConfirmationModal from '../components/ConfirmationModal';
 import toast from 'react-hot-toast';
 import log from '../utils/logger';
 import * as service from '../services/supabaseService';
-import { AcceptPanel, SessionList } from '../components/SessionControls';
+import MemberCard from '../components/MemberCard';
+import { byWorkOrder } from '../utils/memberOrder';
 import styles from './WindowAdminPage.module.css';
 
 type Member = WindowAdminData['members'][number];
 
 function WindowAdminPage() {
     const {
-        windowInfo, queueInfo, members, assignedMember, activeMembers, loading, error, errorKind, isProcessing, loadInitialData,
+        windowInfo, queueInfo, members, assignedMember, loading, error, errorKind, isProcessing, loadInitialData,
         isJoinModalOpen, joinUrl, qrCodeUrl, setIsJoinModalOpen,
         callNext, callSpecific, completeService, returnToQueue,
-        startSession, extendTimer, saveNote,
+        startTimer, extendTimer, saveNote,
         isQueueDeleted
     } = useWindowAdmin();
 
@@ -31,10 +31,8 @@ function WindowAdminPage() {
     const waitingMembers = useMemo(() => members.filter((m: Member) => m.status === 'waiting'), [members]);
     const waitingMembersCount = waitingMembers.length;
 
-    const handleAccept = useCallback(async (note: string | null, minutes: number | null) => {
-        if (!assignedMember) return;
-        await startSession(assignedMember.id, note, minutes);
-    }, [assignedMember, startSession]);
+    // Сверху то, что требует внимания: горящие таймеры, потом вызванные.
+    const sortedMembers = useMemo(() => members.slice().sort(byWorkOrder), [members]);
 
     useEffect(() => {
         if (assignedMember) {
@@ -78,7 +76,7 @@ function WindowAdminPage() {
     const getStatusText = useCallback((status: MemberStatus) => {
         if (status === 'called') return 'Вызывается...';
         if (status === 'acknowledged') return '✅ Подтвердил, идет!';
-        if (status === 'in_service') return 'Принят, время идёт';
+        if (status === 'in_service') return 'На руках';
         if (status === 'serviced') return 'Обслужен';
         return 'Ожидает';
     }, []);
@@ -117,14 +115,6 @@ function WindowAdminPage() {
         );
     }
 
-    const assignedMemberCardClasses = assignedMember ? [
-        styles.memberCard,
-        styles.assignedMemberCard, 
-        assignedMember.status === 'called' && styles.called,
-        assignedMember.status === 'called' && 'called-animation',
-        assignedMember.status === 'acknowledged' && styles.acknowledged,
-    ].filter(Boolean).join(' ') : '';
-    
     return (
         <div className={styles.pageWrapper}>
             <header className={styles.header}>
@@ -151,76 +141,34 @@ function WindowAdminPage() {
 
             <main className={styles.mainScrollWrapper}>
                 <div className={`container ${styles.mainContent}`}>
-                    {assignedMember && (
-                        <Card className={assignedMemberCardClasses}>
-                            <div className={styles.memberInfo}>
-                                <p className={styles.memberName}>{assignedMember.display_code} - {assignedMember.member_name}</p>
-                                {assignedMember.service_name && (<p className={styles.memberService}>{assignedMember.service_name}</p>)}
-                                <p className={styles.memberStatus}>{getStatusText(assignedMember.status)}</p>
-                            </div>
-                            {/* --- НАЧАЛО ИЗМЕНЕНИЙ: Добавляем блок с кнопкой удаления --- */}
-                            <div className={styles.memberActions}>
-                                <Button
-                                    onClick={() => handleRemoveMember(assignedMember)}
-                                    className={`${styles.actionButton} ${styles.removeButton}`}
-                                    title="Удалить участника"
-                                >
-                                    <UserX size={20} />
-                                </Button>
-                            </div>
-                            {/* --- КОНЕЦ ИЗМЕНЕНИЙ --- */}
-                        </Card>
-                    )}
-
-                    {/* Приём под таймер — для мест, где обслуживание длится
-                        дольше разговора у стойки: прокат, солярий, картинг.
-                        Обычной очереди это не мешает: там жмут «Завершить»
-                        внизу, как и раньше. */}
-                    {assignedMember && (
-                        <AcceptPanel
-                            onAccept={handleAccept}
-                            isProcessing={isProcessing}
-                            resetKey={assignedMember.id}
-                            defaultExpanded={activeMembers.length > 0}
-                        />
-                    )}
-
-                    <SessionList
-                        members={activeMembers}
-                        isProcessing={isProcessing}
-                        onExtend={extendTimer}
-                        onFinish={completeService}
-                        onSaveNote={saveNote}
-                    />
-
+                    {/* Всё управление — на карточках. Раньше действия жили
+                        в подвале и относились к «текущему вызванному», то есть
+                        работать можно было только по одному и по порядку.
+                        Прокату это не годится: по очереди может идти лодка,
+                        а освободиться катамаран. */}
                     <div className={styles.memberList} ref={listRef}>
-                        {members.filter((member: Member) => member.id !== assignedMember?.id && member.status !== 'in_service').map((member: Member) => {
-                            const isThisWindowAssigned = member.assigned_window_id === windowInfo?.id;
-                            const memberCardClasses = [
-                                styles.memberCard,
-                                isThisWindowAssigned && member.status === 'called' && styles.called,
-                                isThisWindowAssigned && member.status === 'called' && 'called-animation',
-                                isThisWindowAssigned && member.status === 'acknowledged' && styles.acknowledged,
-                                member.status === 'serviced' && styles.serviced,
-                                (member.assigned_window_id && !isThisWindowAssigned) && styles.assignedToOther
-                            ].filter(Boolean).join(' ');
+                        {sortedMembers.map((member: Member) => {
+                            const isMine = member.assigned_window_id === windowInfo?.id;
                             return (
-                                <Card key={member.id} id={`member-${member.id}`} className={memberCardClasses}>
-                                    <div className={styles.memberInfo}>
-                                        <p className={styles.memberName}>{member.display_code} - {member.member_name}</p>
-                                        {member.service_name && (<p className={styles.memberService}>{member.service_name}</p>)}
-                                    </div>
-                                    <div className={styles.memberActions}>
-                                        {member.status === 'waiting' && (
-                                            <Button onClick={() => callSpecific(member.id, assignedMember)} disabled={isProcessing} className={`${styles.actionButton} ${styles.callButton}`} title="Вызвать этого участника"><PhoneCall size={20} /></Button>
-                                        )}
-                                        <Button onClick={() => handleRemoveMember(member)} className={`${styles.actionButton} ${styles.removeButton}`} title="Удалить участника"><UserX size={20} /></Button>
-                                    </div>
-                                </Card>
-                            )
+                                <MemberCard
+                                    key={member.id}
+                                    member={member}
+                                    statusText={getStatusText(member.status)}
+                                    isProcessing={isProcessing}
+                                    highlighted={isMine}
+                                    dimmed={!!member.assigned_window_id && !isMine}
+                                    onCall={callSpecific}
+                                    onReturn={returnToQueue}
+                                    onFinish={completeService}
+                                    onRemove={() => handleRemoveMember(member)}
+                                    onStartTimer={startTimer}
+                                    onExtendTimer={extendTimer}
+                                    onSaveNote={saveNote}
+                                />
+                            );
                         })}
-                        
-                        {members.filter((member: Member) => member.id !== assignedMember?.id && member.status !== 'in_service').length === 0 && (
+
+                        {members.length === 0 && (
                             <div className={styles.emptyState}>
                                 <Users size={48} className={styles.emptyStateIcon} />
                                 <h3 className={styles.emptyStateTitle}>В очереди пока никого нет</h3>
@@ -231,17 +179,12 @@ function WindowAdminPage() {
                 </div>
             </main>
 
-            {/* Вызов следующего виден всегда, а не вместо действий с вызванным:
-                закончить с одним и пригласить другого — разные решения, и
-                приложение не должно склеивать их в одно. */}
+            {/* В подвале остаётся только вызов следующего — он не дубль
+                карточной кнопки: зовёт через call_next_member_to_window,
+                который учитывает привязку услуг к окнам. Кнопка на карточке
+                вызывает конкретного человека в обход маршрутизации. */}
             <footer className={styles.footer}>
                 <div className={`container ${styles.footerActions}`}>
-                    {assignedMember && (
-                        <div className={styles.footerRow}>
-                            <Button onClick={() => returnToQueue(assignedMember.id)} isLoading={isProcessing} className={styles.returnButton}><Undo2 size={20} /> Вернуть</Button>
-                            <Button onClick={() => completeService(assignedMember.id)} isLoading={isProcessing} className={styles.completeButton}><Check size={20} /> Завершить</Button>
-                        </div>
-                    )}
                     <Button onClick={callNext} isLoading={isProcessing} disabled={waitingMembersCount === 0 || queueInfo?.status === 'paused'} className={styles.callNextButton}><PhoneCall size={20} /> Вызвать следующего</Button>
                 </div>
             </footer>

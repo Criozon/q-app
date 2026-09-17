@@ -463,7 +463,12 @@ export type Database = {
         Returns: undefined
       }
       start_member_session: {
-        Args: { p_member_id: string; p_minutes?: number; p_note?: string }
+        Args: {
+          p_member_id: string
+          p_minutes?: number
+          p_note?: string
+          p_window_id?: string
+        }
         Returns: {
           acknowledged_at: string | null
           assigned_window_id: string | null
