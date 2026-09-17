@@ -10,24 +10,31 @@ import ConfirmationModal from '../components/ConfirmationModal';
 import toast from 'react-hot-toast';
 import log from '../utils/logger';
 import * as service from '../services/supabaseService';
+import { AcceptPanel, SessionList } from '../components/SessionControls';
 import styles from './WindowAdminPage.module.css';
 
 type Member = WindowAdminData['members'][number];
 
 function WindowAdminPage() {
     const {
-        windowInfo, queueInfo, members, assignedMember, loading, error, errorKind, isProcessing, loadInitialData,
+        windowInfo, queueInfo, members, assignedMember, activeMembers, loading, error, errorKind, isProcessing, loadInitialData,
         isJoinModalOpen, joinUrl, qrCodeUrl, setIsJoinModalOpen,
         callNext, callSpecific, completeService, returnToQueue,
+        startSession, extendTimer, saveNote,
         isQueueDeleted
     } = useWindowAdmin();
 
     const [copied, setCopied] = useState(false);
     const [confirmation, setConfirmation] = useState<ConfirmationState>({ isOpen: false });
     const listRef = useRef(null);
-    
+
     const waitingMembers = useMemo(() => members.filter((m: Member) => m.status === 'waiting'), [members]);
     const waitingMembersCount = waitingMembers.length;
+
+    const handleAccept = useCallback(async (note: string | null, minutes: number | null) => {
+        if (!assignedMember) return;
+        await startSession(assignedMember.id, note, minutes);
+    }, [assignedMember, startSession]);
 
     useEffect(() => {
         if (assignedMember) {
@@ -71,6 +78,7 @@ function WindowAdminPage() {
     const getStatusText = useCallback((status: MemberStatus) => {
         if (status === 'called') return 'Вызывается...';
         if (status === 'acknowledged') return '✅ Подтвердил, идет!';
+        if (status === 'in_service') return 'Принят, время идёт';
         if (status === 'serviced') return 'Обслужен';
         return 'Ожидает';
     }, []);
@@ -163,9 +171,30 @@ function WindowAdminPage() {
                             {/* --- КОНЕЦ ИЗМЕНЕНИЙ --- */}
                         </Card>
                     )}
-                    
+
+                    {/* Приём под таймер — для мест, где обслуживание длится
+                        дольше разговора у стойки: прокат, солярий, картинг.
+                        Обычной очереди это не мешает: там жмут «Завершить»
+                        внизу, как и раньше. */}
+                    {assignedMember && (
+                        <AcceptPanel
+                            onAccept={handleAccept}
+                            isProcessing={isProcessing}
+                            resetKey={assignedMember.id}
+                            defaultExpanded={activeMembers.length > 0}
+                        />
+                    )}
+
+                    <SessionList
+                        members={activeMembers}
+                        isProcessing={isProcessing}
+                        onExtend={extendTimer}
+                        onFinish={completeService}
+                        onSaveNote={saveNote}
+                    />
+
                     <div className={styles.memberList} ref={listRef}>
-                        {members.filter((member: Member) => member.id !== assignedMember?.id).map((member: Member) => {
+                        {members.filter((member: Member) => member.id !== assignedMember?.id && member.status !== 'in_service').map((member: Member) => {
                             const isThisWindowAssigned = member.assigned_window_id === windowInfo?.id;
                             const memberCardClasses = [
                                 styles.memberCard,
@@ -191,7 +220,7 @@ function WindowAdminPage() {
                             )
                         })}
                         
-                        {members.length === 0 && (
+                        {members.filter((member: Member) => member.id !== assignedMember?.id && member.status !== 'in_service').length === 0 && (
                             <div className={styles.emptyState}>
                                 <Users size={48} className={styles.emptyStateIcon} />
                                 <h3 className={styles.emptyStateTitle}>В очереди пока никого нет</h3>
@@ -202,16 +231,18 @@ function WindowAdminPage() {
                 </div>
             </main>
 
+            {/* Вызов следующего виден всегда, а не вместо действий с вызванным:
+                закончить с одним и пригласить другого — разные решения, и
+                приложение не должно склеивать их в одно. */}
             <footer className={styles.footer}>
                 <div className={`container ${styles.footerActions}`}>
-                    {assignedMember ? (
-                        <>
+                    {assignedMember && (
+                        <div className={styles.footerRow}>
                             <Button onClick={() => returnToQueue(assignedMember.id)} isLoading={isProcessing} className={styles.returnButton}><Undo2 size={20} /> Вернуть</Button>
                             <Button onClick={() => completeService(assignedMember.id)} isLoading={isProcessing} className={styles.completeButton}><Check size={20} /> Завершить</Button>
-                        </>
-                    ) : (
-                        <Button onClick={callNext} isLoading={isProcessing} disabled={waitingMembersCount === 0 || queueInfo?.status === 'paused'} className={styles.callNextButton}><PhoneCall size={20} /> Вызвать следующего</Button>
+                        </div>
                     )}
+                    <Button onClick={callNext} isLoading={isProcessing} disabled={waitingMembersCount === 0 || queueInfo?.status === 'paused'} className={styles.callNextButton}><PhoneCall size={20} /> Вызвать следующего</Button>
                 </div>
             </footer>
 

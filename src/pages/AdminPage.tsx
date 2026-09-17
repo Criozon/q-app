@@ -18,6 +18,8 @@ import Input from '../components/Input';
 import ServiceRow from '../components/ServiceRow';
 import NumberStepper from '../components/NumberStepper';
 import homeStyles from './HomePage.module.css';
+import { AcceptPanel, SessionList } from '../components/SessionControls';
+import { byTimeLeft } from '../utils/clock';
 import styles from './AdminPage.module.css';
 import log from '../utils/logger';
 import type { ConfirmationState, ServiceDraft, QueueStats, Announcement, AdminMember, WindowWithServices } from '../types/domain';
@@ -164,6 +166,40 @@ function AdminPage() {
         }
     }, []);
 
+    // Выдача под таймер: очередь с одним окном ведётся прямо отсюда,
+    // и лодочнику незачем открывать отдельную панель окна.
+    const startSession = useCallback(async (memberId: string, note: string | null, minutes: number | null) => {
+        setIsProcessing(true);
+        try {
+            await service.startMemberSession(memberId, note, minutes);
+        } catch {
+            toast.error('Не удалось принять участника.');
+        } finally {
+            setIsProcessing(false);
+        }
+    }, []);
+
+    const extendTimer = useCallback(async (memberId: string, minutes: number) => {
+        setIsProcessing(true);
+        try {
+            await service.extendMemberTimer(memberId, minutes);
+        } catch {
+            toast.error('Не удалось продлить время.');
+        } finally {
+            setIsProcessing(false);
+        }
+    }, []);
+
+    // Без setIsProcessing: пометку правят прямо в карточке, блокировать
+    // из-за неё остальные кнопки незачем.
+    const saveNote = useCallback(async (memberId: string, note: string | null) => {
+        try {
+            await service.updateMemberNote(memberId, note);
+        } catch {
+            toast.error('Не удалось сохранить пометку.');
+        }
+    }, []);
+
     const returnToQueue = useCallback(async (memberId: string) => {
         setIsProcessing(true);
         try {
@@ -254,7 +290,11 @@ function AdminPage() {
     const handleRemoveMember = useCallback((member: AdminMember) => { setConfirmation({ isOpen: true, title: 'Удалить участника?', message: <p>Вы уверены, что хотите удалить <strong>{member.member_name} ({member.display_code})</strong> из очереди?</p>, confirmText: 'Да, удалить', isDestructive: true, onConfirm: async () => { await service.deleteMember(member.id); toast.success(`Участник ${member.member_name} удален.`);},});}, []);
     const handleDeleteCurrentQueue = useCallback(() => { if (!queue) return; setConfirmation({ isOpen: true, title: 'Удалить очередь?', message: <p>Вы уверены, что хотите удалить очередь <strong>"{queue.name}"</strong>? Это действие необратимо.</p>, confirmText: 'Да, удалить', isDestructive: true, onConfirm: () => { const toastId = toast.loading(`Удаляем очередь "${queue.name}"...`); service.deleteQueue(queue.id).then(({error}) => { if (error) toast.error(`Не удалось удалить очередь "${queue.name}".`, { id: toastId }); else { setMyQueues(prev => prev.filter(q => q.id !== queue.id)); toast.success(`Очередь "${queue.name}" удалена.`, { id: toastId }); navigate('/'); } }); } }); }, [queue, navigate, setMyQueues]);
     const handleShare = useCallback(async (shareData: ShareData & { key?: string }) => { if (navigator.share) { try { await navigator.share(shareData); } catch (err) { log(PAGE_SOURCE, 'Ошибка Web Share API:', err); } } else { navigator.clipboard.writeText(shareData.url ?? '').then(() => { setCopiedKey(shareData.key ?? null); setTimeout(() => setCopiedKey(null), 2000); }).catch(() => toast.error("Не удалось скопировать ссылку.")); } }, []);
-    const getStatusText = useCallback((member: AdminMember) => { switch (member.status) { case 'called': return isSimpleMode ? 'Вызывается' : `Вызывается в: ${member.window_name?.name || '...'}`; case 'acknowledged': return isSimpleMode ? 'Идет к окну' : `Идет в: ${member.window_name?.name || '...'}`; case 'serviced': return 'Обслужен'; default: return 'Ожидает'; } }, [isSimpleMode]);
+    const getStatusText = useCallback((member: AdminMember) => { switch (member.status) { case 'called': return isSimpleMode ? 'Вызывается' : `Вызывается в: ${member.window_name?.name || '...'}`; case 'acknowledged': return isSimpleMode ? 'Идет к окну' : `Идет в: ${member.window_name?.name || '...'}`; case 'in_service': return member.note ? `На руках: ${member.note}` : 'Принят, время идёт'; case 'serviced': return 'Обслужен'; default: return 'Ожидает'; } }, [isSimpleMode]);
+    const activeMembers = useMemo(
+        () => members.filter(m => m.status === 'in_service').slice().sort(byTimeLeft),
+        [members]);
+
     const assignedMemberInSimpleMode = useMemo(() => isSimpleMode ? members.find(m => m.assigned_window_id === windows[0]?.id && (m.status === 'called' || m.status === 'acknowledged')) : null, [members, windows, isSimpleMode]);
     if (loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spinner /></div>;
     // Сетевой сбой раньше показывался как «очередь не найдена» — человек
@@ -365,8 +405,28 @@ function AdminPage() {
                     </Card>
                 </Section>
 
+                {/* Приём под таймер: для проката, солярия, картинга — там,
+                    где человек уходит с чем-то на время. Обычной очереди не
+                    мешает: в ней просто жмут «Завершить» внизу. */}
+                {isSimpleMode && assignedMemberInSimpleMode && (
+                    <AcceptPanel
+                        onAccept={(note, minutes) => startSession(assignedMemberInSimpleMode.id, note, minutes)}
+                        isProcessing={isProcessing}
+                        resetKey={assignedMemberInSimpleMode.id}
+                        defaultExpanded={activeMembers.length > 0}
+                    />
+                )}
+
+                <SessionList
+                    members={activeMembers}
+                    isProcessing={isProcessing}
+                    onExtend={extendTimer}
+                    onFinish={completeService}
+                    onSaveNote={saveNote}
+                />
+
                 <Section title="Общая очередь">
-                    <div className={styles.memberList}>{members.length > 0 ? (members.map(member => (<Card key={member.id} className={`${styles.memberCard} ${member.status === 'called' ? styles.called : ''} ${member.status === 'acknowledged' ? styles.acknowledged : ''} ${member.status === 'serviced' ? styles.serviced : ''} ${member.status === 'called' ? 'called-animation' : ''}`}><div className={styles.memberInfo}><p className={styles.memberName}>{member.display_code || `#${member.ticket_number}`} - {member.member_name}</p>{member.service_name?.name && (<p className={styles.memberService}>{member.service_name.name}</p>)}<p className={styles.memberStatus}>{getStatusText(member)}</p></div><div className={styles.memberActions}>{isSimpleMode && member.status === 'waiting' && (<Button onClick={() => callMember(member.id, windows[0].id)} className={`${styles.actionButton} ${styles.callButton}`} title="Вызвать участника"><PhoneCall size={20} /></Button>)}<Button onClick={() => handleRemoveMember(member)} className={`${styles.actionButton} ${styles.removeButton}`} title="Удалить участника"><UserX size={20} /></Button></div></Card>))) : (<div className={styles.emptyState}><Users size={48} className={styles.emptyStateIcon} /><h3 className={styles.emptyStateTitle}>В очереди пока никого нет</h3><p className={styles.emptyStateText}>Поделитесь QR-кодом или ссылкой, чтобы люди могли присоединиться.</p><Button onClick={() => setIsJoinModalOpen(true)} className={styles.emptyStateButton}><QrCode size={18} />Показать QR-код</Button></div>)}</div>
+                    <div className={styles.memberList}>{members.filter(m => m.status !== 'in_service').length > 0 ? (members.filter(m => m.status !== 'in_service').map(member => (<Card key={member.id} className={`${styles.memberCard} ${member.status === 'called' ? styles.called : ''} ${member.status === 'acknowledged' ? styles.acknowledged : ''} ${member.status === 'serviced' ? styles.serviced : ''} ${member.status === 'called' ? 'called-animation' : ''}`}><div className={styles.memberInfo}><p className={styles.memberName}>{member.display_code || `#${member.ticket_number}`} - {member.member_name}</p>{member.service_name?.name && (<p className={styles.memberService}>{member.service_name.name}</p>)}<p className={styles.memberStatus}>{getStatusText(member)}</p></div><div className={styles.memberActions}>{isSimpleMode && member.status === 'waiting' && (<Button onClick={() => callMember(member.id, windows[0].id)} className={`${styles.actionButton} ${styles.callButton}`} title="Вызвать участника"><PhoneCall size={20} /></Button>)}<Button onClick={() => handleRemoveMember(member)} className={`${styles.actionButton} ${styles.removeButton}`} title="Удалить участника"><UserX size={20} /></Button></div></Card>))) : (<div className={styles.emptyState}><Users size={48} className={styles.emptyStateIcon} /><h3 className={styles.emptyStateTitle}>В очереди пока никого нет</h3><p className={styles.emptyStateText}>Поделитесь QR-кодом или ссылкой, чтобы люди могли присоединиться.</p><Button onClick={() => setIsJoinModalOpen(true)} className={styles.emptyStateButton}><QrCode size={18} />Показать QR-код</Button></div>)}</div>
                 </Section>
 
                 <Section title="Итоги">
@@ -377,7 +437,7 @@ function AdminPage() {
             </main>
 
             {isSimpleMode && (
-                <footer className={styles.footer}><div className={`container ${styles.footerActions}`}>{assignedMemberInSimpleMode ? (<><Button onClick={() => returnToQueue(assignedMemberInSimpleMode.id)} isLoading={isProcessing} className={styles.returnButton}><Undo2 size={20} /> Вернуть</Button><Button onClick={() => completeService(assignedMemberInSimpleMode.id)} isLoading={isProcessing} className={styles.completeButton}><Check size={20} /> Завершить</Button></>) : (<Button onClick={callNextInSimpleMode} isLoading={isProcessing} disabled={waitingMembersCount === 0 || queue?.status === 'paused'} className={styles.callNextButton}><PhoneCall size={20} /> Вызвать следующего</Button>)}</div></footer>
+                <footer className={styles.footer}><div className={`container ${styles.footerActions}`}>{assignedMemberInSimpleMode && (<div className={styles.footerRow}><Button onClick={() => returnToQueue(assignedMemberInSimpleMode.id)} isLoading={isProcessing} className={styles.returnButton}><Undo2 size={20} /> Вернуть</Button><Button onClick={() => completeService(assignedMemberInSimpleMode.id)} isLoading={isProcessing} className={styles.completeButton}><Check size={20} /> Завершить</Button></div>)}<Button onClick={callNextInSimpleMode} isLoading={isProcessing} disabled={waitingMembersCount === 0 || queue?.status === 'paused'} className={styles.callNextButton}><PhoneCall size={20} /> Вызвать следующего</Button></div></footer>
             )}
 
             <Modal isOpen={isJoinModalOpen} onClose={() => setIsJoinModalOpen(false)}><div className={styles.modalContent}><p className={styles.modalInstruction}>Поделитесь QR-кодом или ссылкой, чтобы люди могли присоединиться.</p>{qrCodeUrl ? <img src={qrCodeUrl} alt="QR Code" className={styles.qrImage} /> : <Spinner />}<p className={styles.joinLink}>{joinUrl || 'Генерация ссылки...'}</p><Button onClick={() => handleShare({url: joinUrl, title: `Вход в очередь: ${queue?.name}`, text: 'Отсканируйте QR или перейдите по ссылке, чтобы войти в очередь.', key: 'join-link' })}>{copiedKey === 'join-link' ? <><Check size={18} /> Скопировано!</> : <><Share2 size={18} /> Поделиться</>}</Button></div></Modal>

@@ -95,12 +95,14 @@ export type Database = {
           display_code: string | null
           id: string
           member_name: string
+          note: string | null
           queue_id: string
           service_id: string | null
           serviced_at: string | null
           sort_order: number
           status: string
           ticket_number: number
+          timer_ends_at: string | null
           updated_at: string | null
           user_id: string | null
         }
@@ -113,12 +115,14 @@ export type Database = {
           display_code?: string | null
           id?: string
           member_name: string
+          note?: string | null
           queue_id: string
           service_id?: string | null
           serviced_at?: string | null
           sort_order: number
           status?: string
           ticket_number: number
+          timer_ends_at?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -131,12 +135,14 @@ export type Database = {
           display_code?: string | null
           id?: string
           member_name?: string
+          note?: string | null
           queue_id?: string
           service_id?: string | null
           serviced_at?: string | null
           sort_order?: number
           status?: string
           ticket_number?: number
+          timer_ends_at?: string | null
           updated_at?: string | null
           user_id?: string | null
         }
@@ -354,12 +360,43 @@ export type Database = {
           display_code: string | null
           id: string
           member_name: string
+          note: string | null
           queue_id: string
           service_id: string | null
           serviced_at: string | null
           sort_order: number
           status: string
           ticket_number: number
+          timer_ends_at: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "queue_members"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      extend_member_timer: {
+        Args: { p_member_id: string; p_minutes: number }
+        Returns: {
+          acknowledged_at: string | null
+          assigned_window_id: string | null
+          called_at: string | null
+          created_at: string
+          defer_count: number
+          display_code: string | null
+          id: string
+          member_name: string
+          note: string | null
+          queue_id: string
+          service_id: string | null
+          serviced_at: string | null
+          sort_order: number
+          status: string
+          ticket_number: number
+          timer_ends_at: string | null
           updated_at: string | null
           user_id: string | null
         }
@@ -402,12 +439,14 @@ export type Database = {
           display_code: string | null
           id: string
           member_name: string
+          note: string | null
           queue_id: string
           service_id: string | null
           serviced_at: string | null
           sort_order: number
           status: string
           ticket_number: number
+          timer_ends_at: string | null
           updated_at: string | null
           user_id: string | null
         }
@@ -422,6 +461,35 @@ export type Database = {
       set_services_for_window: {
         Args: { p_service_ids: string[]; p_window_id: string }
         Returns: undefined
+      }
+      start_member_session: {
+        Args: { p_member_id: string; p_minutes?: number; p_note?: string }
+        Returns: {
+          acknowledged_at: string | null
+          assigned_window_id: string | null
+          called_at: string | null
+          created_at: string
+          defer_count: number
+          display_code: string | null
+          id: string
+          member_name: string
+          note: string | null
+          queue_id: string
+          service_id: string | null
+          serviced_at: string | null
+          sort_order: number
+          status: string
+          ticket_number: number
+          timer_ends_at: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "queue_members"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       update_service_window_assignments: {
         Args: { p_service_id: string; p_window_ids: string[] }

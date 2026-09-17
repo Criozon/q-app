@@ -246,6 +246,34 @@ export const callSpecificMember = (memberId: string, windowId: string) =>
         .update({ status: 'called', assigned_window_id: windowId, called_at: new Date().toISOString() })
         .eq('id', memberId));
 
+// --- Выдача под таймер --------------------------------------------------
+//
+// Для мест, где обслуживание длится не минуту у стойки: прокат, солярий,
+// картинг. Участник остаётся открытым, у него идёт время и висит пометка
+// о том, что именно ему выдали. Время считает сервер — часы устройства
+// администратора сдвинули бы таймеры сразу у всех.
+
+export const startMemberSession = (memberId: string, note: string | null, minutes: number | null) =>
+    withSession<QueueMember>('startMemberSession', () =>
+        asShape<QueueMember>(supabase.rpc('start_member_session', {
+            p_member_id: memberId,
+            p_note: note ?? undefined,
+            p_minutes: minutes ?? undefined,
+        })));
+
+export const extendMemberTimer = (memberId: string, minutes: number) =>
+    withSession<QueueMember>('extendMemberTimer', () =>
+        asShape<QueueMember>(supabase.rpc('extend_member_timer', {
+            p_member_id: memberId,
+            p_minutes: minutes,
+        })));
+
+export const updateMemberNote = (memberId: string, note: string | null) =>
+    withSession('updateMemberNote', () => supabase
+        .from('queue_members')
+        .update({ note: note?.trim() || null })
+        .eq('id', memberId));
+
 export const returnMemberToWaiting = (memberId: string) =>
     withSession('returnMemberToWaiting', () => supabase
         .from('queue_members')

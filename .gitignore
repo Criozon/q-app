@@ -77,3 +77,6 @@ dist
 
 # служебный каталог Supabase CLI
 supabase/.temp/
+
+# Кэш анонимных личностей для тестов: у Supabase лимит на регистрации
+tests/.auth-cache-*.json

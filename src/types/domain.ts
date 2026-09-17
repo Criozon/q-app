@@ -9,7 +9,7 @@ export type Service = Tables['services']['Row'];
 export type QueueWindow = Tables['windows']['Row'];
 export type Announcement = Tables['queue_announcements']['Row'];
 
-export type MemberStatus = 'waiting' | 'called' | 'acknowledged' | 'serviced';
+export type MemberStatus = 'waiting' | 'called' | 'acknowledged' | 'in_service' | 'serviced';
 export type QueueStatus = 'active' | 'paused';
 
 /**
@@ -54,12 +54,18 @@ export interface MyQueueStatus {
         ticket_number: number;
         status: MemberStatus;
         defer_count: number;
+        /** Пометка администратора: «Катамаран 3». Показывается участнику. */
+        note: string | null;
+        /** Когда истекает выданное время. null — таймера нет. */
+        timer_ends_at: string | null;
         service_name: string | null;
         window_name: string | null;
     };
     queue: Pick<Queue, 'id' | 'name' | 'status' | 'window_count'>;
     people_ahead: number;
     estimated_minutes: number;
+    /** Момент на сервере: по нему выправляется отсчёт, см. utils/clock.ts. */
+    server_now: string;
     announcements: Pick<Announcement, 'id' | 'body' | 'created_at'>[];
 }
 
@@ -87,8 +93,11 @@ export interface WindowAdminData {
      */
     members: (Pick<QueueMember,
         'id' | 'created_at' | 'queue_id' | 'member_name' | 'status' | 'ticket_number' |
-        'display_code' | 'service_id' | 'assigned_window_id' | 'acknowledged_at'
+        'display_code' | 'service_id' | 'assigned_window_id' | 'acknowledged_at' |
+        'note' | 'timer_ends_at'
     > & { service_name: string | null })[];
+    /** Момент на сервере: по нему выправляется отсчёт, см. utils/clock.ts. */
+    server_now: string;
 }
 
 /** Участник в общей админке: поля-связи приходят объектами из PostgREST-embed. */

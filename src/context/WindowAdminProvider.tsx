@@ -9,6 +9,7 @@ import type { RealtimePayload } from '../services/supabaseService';
 import type { WindowAdminData } from '../types/domain';
 import { errorMessage } from '../utils/errors';
 import { withRetry } from '../utils/retry';
+import { syncClock, byTimeLeft } from '../utils/clock';
 
 /** Панели с таким ключом нет — в отличие от «не смогли дозвониться». */
 class WindowNotFound extends Error {
@@ -57,6 +58,10 @@ export function WindowAdminProvider({ children }: { children: ReactNode }) {
             }, { attempts: isInitialLoad ? 3 : 1, label: 'загрузка панели окна' });
             
             const { windowInfo: wData, queueInfo: qData, members: mData } = data;
+
+            // Поправка часов: отсчёт на экране считается от неё, а не от
+            // того, что показывает устройство оператора.
+            syncClock(data.server_now);
 
             if (!wData) throw new WindowNotFound();
             
@@ -130,15 +135,40 @@ export function WindowAdminProvider({ children }: { children: ReactNode }) {
     }, [queueId, isQueueDeleted]);
 
     const callNext = useCallback(async () => { if (!windowInfo || !queueInfo) return; setIsProcessing(true); try { await service.callNextMemberToWindow(windowInfo.id); } catch { toast.error("Не удалось вызвать участника."); } finally { setIsProcessing(false); } }, [windowInfo, queueInfo]);
-    const callSpecific = useCallback(async (memberId: string, assignedMember: Member | undefined) => { if (assignedMember) { toast.error('Завершите текущее обслуживание, чтобы вызвать другого участника.'); return; } setIsProcessing(true); try { await service.callSpecificMember(memberId, windowInfo!.id); } catch { toast.error("Не удалось вызвать этого участника."); } finally { setIsProcessing(false); } }, [windowInfo]);
+    const callSpecific = useCallback(async (memberId: string, assignedMember: Member | undefined) => { if (assignedMember) { toast.error('Сначала примите или верните вызванного участника.'); return; } setIsProcessing(true); try { await service.callSpecificMember(memberId, windowInfo!.id); } catch { toast.error("Не удалось вызвать этого участника."); } finally { setIsProcessing(false); } }, [windowInfo]);
     const completeService = useCallback(async (memberId: string) => { setIsProcessing(true); try { await service.updateMemberStatus(memberId, 'serviced'); } catch { toast.error('Не удалось завершить обслуживание.'); } finally { setIsProcessing(false); } }, []);
+
+    const startSession = useCallback(async (memberId: string, note: string | null, minutes: number | null) => {
+        setIsProcessing(true);
+        try { await service.startMemberSession(memberId, note, minutes); }
+        catch { toast.error('Не удалось принять участника.'); }
+        finally { setIsProcessing(false); }
+    }, []);
+
+    const extendTimer = useCallback(async (memberId: string, minutes: number) => {
+        setIsProcessing(true);
+        try { await service.extendMemberTimer(memberId, minutes); }
+        catch { toast.error('Не удалось продлить время.'); }
+        finally { setIsProcessing(false); }
+    }, []);
+
+    // Без setIsProcessing: пометку правят прямо в карточке, и блокировать
+    // из-за неё остальные кнопки незачем.
+    const saveNote = useCallback(async (memberId: string, note: string | null) => {
+        try { await service.updateMemberNote(memberId, note); }
+        catch { toast.error('Не удалось сохранить пометку.'); }
+    }, []);
     const returnToQueue = useCallback(async (memberId: string) => { setIsProcessing(true); try { await service.returnMemberToWaiting(memberId); } catch { toast.error('Не удалось вернуть участника в очередь.'); } finally { setIsProcessing(false); } }, []);
     
     const assignedMember = useMemo(() => members.find(m => m.assigned_window_id === windowInfo?.id && (m.status === 'called' || m.status === 'acknowledged')), [members, windowInfo]);
+
+    const activeMembers = useMemo(() => members
+        .filter(m => m.status === 'in_service' && m.assigned_window_id === windowInfo?.id)
+        .sort(byTimeLeft), [members, windowInfo]);
     
     const value = useMemo(() => ({ 
-        windowInfo, queueInfo, members, assignedMember, loading, error, errorKind, isProcessing, isJoinModalOpen, joinUrl, qrCodeUrl, isQueueDeleted, setIsJoinModalOpen, loadInitialData, callNext, callSpecific, completeService, returnToQueue 
-    }), [windowInfo, queueInfo, members, assignedMember, loading, error, errorKind, isProcessing, isJoinModalOpen, joinUrl, qrCodeUrl, isQueueDeleted, loadInitialData, callNext, callSpecific, completeService, returnToQueue]);
+        windowInfo, queueInfo, members, assignedMember, activeMembers, loading, error, errorKind, isProcessing, isJoinModalOpen, joinUrl, qrCodeUrl, isQueueDeleted, setIsJoinModalOpen, loadInitialData, callNext, callSpecific, completeService, returnToQueue, startSession, extendTimer, saveNote 
+    }), [windowInfo, queueInfo, members, assignedMember, activeMembers, loading, error, errorKind, isProcessing, isJoinModalOpen, joinUrl, qrCodeUrl, isQueueDeleted, loadInitialData, callNext, callSpecific, completeService, returnToQueue, startSession, extendTimer, saveNote]);
     
     return (<WindowAdminContext.Provider value={value}>{children}</WindowAdminContext.Provider>);
 }
