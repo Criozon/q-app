@@ -106,8 +106,8 @@ export function WindowAdminProvider({ children }: { children: ReactNode }) {
 
     const callNext = useCallback(async () => { if (!windowInfo || !queueInfo) return; setIsProcessing(true); try { await service.callNextMemberToWindow(windowInfo.id); } catch { toast.error("Не удалось вызвать участника."); } finally { setIsProcessing(false); } }, [windowInfo, queueInfo]);
     const callSpecific = useCallback(async (memberId: string, assignedMember: Member | undefined) => { if (assignedMember) { toast.error('Завершите текущее обслуживание, чтобы вызвать другого участника.'); return; } setIsProcessing(true); try { await service.callSpecificMember(memberId, windowInfo!.id); } catch { toast.error("Не удалось вызвать этого участника."); } finally { setIsProcessing(false); } }, [windowInfo]);
-    const completeService = useCallback(async (memberId: string) => { setIsProcessing(true); try { await service.updateMemberStatus(memberId, 'serviced'); } finally { setIsProcessing(false); } }, []);
-    const returnToQueue = useCallback(async (memberId: string) => { setIsProcessing(true); try { await service.returnMemberToWaiting(memberId); } finally { setIsProcessing(false); } }, []);
+    const completeService = useCallback(async (memberId: string) => { setIsProcessing(true); try { await service.updateMemberStatus(memberId, 'serviced'); } catch { toast.error('Не удалось завершить обслуживание.'); } finally { setIsProcessing(false); } }, []);
+    const returnToQueue = useCallback(async (memberId: string) => { setIsProcessing(true); try { await service.returnMemberToWaiting(memberId); } catch { toast.error('Не удалось вернуть участника в очередь.'); } finally { setIsProcessing(false); } }, []);
     
     const assignedMember = useMemo(() => members.find(m => m.assigned_window_id === windowInfo?.id && (m.status === 'called' || m.status === 'acknowledged')), [members, windowInfo]);
     

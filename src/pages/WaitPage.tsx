@@ -11,17 +11,20 @@ import log from '../utils/logger';
 import * as service from '../services/supabaseService';
 import { clearActiveSession } from '../utils/session';
 import { useWakeLock } from '../hooks/useWakeLock';
+// В Safari на iOS объекта Notification нет вообще — он появляется только
+// в PWA, установленном на домашний экран. Прямое обращение
+// Notification.permission на обычной вкладке iPhone роняет рендер,
+// поэтому доступ к нему только через эти обёртки.
+import {
+    isNotificationSupported, getNotificationPermission,
+    showNotification, registerServiceWorker,
+} from '../utils/notifications';
 import type { ConfirmationState, MyQueueStatus } from '../types/domain';
 import type { RealtimePayload } from '../services/supabaseService';
 import { errorMessage as toErrorMessage, errorIncludes } from '../utils/errors';
 
 const PAGE_SOURCE = 'WaitPage';
 
-// В Safari на iOS объекта Notification нет вообще — он появляется только
-// в PWA, установленном на домашний экран. Прямое обращение Notification.permission
-// на обычной вкладке iPhone роняет рендер с ReferenceError, поэтому только так.
-const isNotificationSupported = () => typeof Notification !== 'undefined';
-const getNotificationPermission = () => (isNotificationSupported() ? Notification.permission : 'unsupported');
 
 function WaitPage() {
     const { queueId, memberId } = useParams<{ queueId: string; memberId: string }>();
@@ -98,8 +101,9 @@ function WaitPage() {
         setNotificationPermission(permission);
         if (permission === 'granted') {
             toast.success('Отлично! Мы сообщим, когда подойдет ваша очередь.');
-            new Notification('Уведомления для Q-App включены!', {
-                body: 'Теперь вы не пропустите свой вызов.', icon: '/vite.svg'
+            await registerServiceWorker();
+            void showNotification('Уведомления для Q-App включены!', {
+                body: 'Теперь вы не пропустите свой вызов.',
             });
         } else {
             toast.error('Вы заблокировали уведомления. Вы можете включить их в настройках браузера.');
@@ -204,6 +208,11 @@ function WaitPage() {
     };
 
     // --- ИЗМЕНЕНИЕ 2/3: Добавляем новый useEffect для "разблокировки" звука ---
+    // Разрешение могло быть выдано в прошлый раз — воркер нужен и тогда.
+    useEffect(() => {
+        if (getNotificationPermission() === 'granted') void registerServiceWorker();
+    }, []);
+
     useEffect(() => {
         // Создаем аудио-элемент при монтировании
         audioPlayer.current = new Audio('/notification.mp3');
@@ -299,14 +308,14 @@ function WaitPage() {
                 
                 if (notificationPermission === 'granted') {
                     const windowText = !isSimpleMode && myInfo.window_name ? ` в ${myInfo.window_name}` : '';
-                    // renotify нестандартный и в типах не описан, но нужен:
-                    // без него повторное уведомление с тем же tag не звучит.
-                    new Notification('Ваша очередь подошла!', {
+                    // Никаких прямых `new Notification` здесь: на Android
+                    // это исключение, а исключение внутри useEffect сносит
+                    // всё дерево и оставляет человека с белым экраном.
+                    void showNotification('Ваша очередь подошла!', {
                         body: `Вас вызывают${windowText}. Ваш код: ${myInfo.display_code}`,
-                        icon: '/vite.svg',
                         tag: `queue-notification-${queueId}`,
-                        renotify: true,
-                    } as NotificationOptions & { renotify: boolean });
+                        url: window.location.pathname,
+                    });
                 }
             }
 

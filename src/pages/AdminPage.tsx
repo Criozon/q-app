@@ -138,10 +138,54 @@ function AdminPage() {
     const isSimpleMode = useMemo(() => windows.length === 1, [windows]);
     useEffect(() => { if (queue && !loading) { setMyQueues(prevQueues => { const queueExists = prevQueues.some(q => q.id === queue.id); if (queueExists) return prevQueues; return [{ id: queue.id, name: queue.name, admin_secret_key: queue.admin_secret_key }, ...prevQueues]; }); if (location.state?.fromCreation && !isJoinModalOpen) { setIsJoinModalOpen(true); navigate(location.pathname, { replace: true, state: {} }); } } }, [queue, loading, location.state, navigate, setMyQueues, isJoinModalOpen]);
     const handleToggleQueueStatus = useCallback(async () => { if (!queue) return; const originalStatus = queue.status; const newStatus = originalStatus === 'active' ? 'paused' : 'active'; const actionText = newStatus === 'paused' ? 'приостановлена' : 'возобновлена'; setQueue(prevQueue => (prevQueue ? { ...prevQueue, status: newStatus } : prevQueue)); try { await service.updateQueueStatus(queue.id, newStatus); toast.success(`Запись в очередь ${actionText}.`); } catch { toast.error("Не удалось изменить статус очереди."); setQueue(prevQueue => (prevQueue ? { ...prevQueue, status: originalStatus } : prevQueue)); } }, [queue, setQueue]);
-    const callMember = useCallback(async (memberId: string, windowId: string) => { setIsProcessing(true); const { error } = await service.callSpecificMember(memberId, windowId); if (error) toast.error("Не удалось вызвать участника."); setIsProcessing(false); }, []);
-    const completeService = useCallback(async (memberId: string) => { setIsProcessing(true); await service.updateMemberStatus(memberId, 'serviced'); setIsProcessing(false); }, []);
-    const returnToQueue = useCallback(async (memberId: string) => { setIsProcessing(true); await service.returnMemberToWaiting(memberId); setIsProcessing(false); }, []);
-    const callNextInSimpleMode = useCallback(async () => { if (windows.length !== 1) return; setIsProcessing(true); await service.callNextMemberToWindow(windows[0].id); setIsProcessing(false); }, [windows]);
+    // Все четыре — через try/finally. Сервисный слой при ошибке БРОСАЕТ,
+    // поэтому без finally строка setIsProcessing(false) просто не
+    // выполнялась: одна неудачная сеть — и кнопки админки оставались
+    // заблокированными до перезагрузки страницы.
+    const callMember = useCallback(async (memberId: string, windowId: string) => {
+        setIsProcessing(true);
+        try {
+            await service.callSpecificMember(memberId, windowId);
+        } catch {
+            toast.error('Не удалось вызвать участника.');
+        } finally {
+            setIsProcessing(false);
+        }
+    }, []);
+
+    const completeService = useCallback(async (memberId: string) => {
+        setIsProcessing(true);
+        try {
+            await service.updateMemberStatus(memberId, 'serviced');
+        } catch {
+            toast.error('Не удалось завершить обслуживание.');
+        } finally {
+            setIsProcessing(false);
+        }
+    }, []);
+
+    const returnToQueue = useCallback(async (memberId: string) => {
+        setIsProcessing(true);
+        try {
+            await service.returnMemberToWaiting(memberId);
+        } catch {
+            toast.error('Не удалось вернуть участника в очередь.');
+        } finally {
+            setIsProcessing(false);
+        }
+    }, []);
+
+    const callNextInSimpleMode = useCallback(async () => {
+        if (windows.length !== 1) return;
+        setIsProcessing(true);
+        try {
+            await service.callNextMemberToWindow(windows[0].id);
+        } catch {
+            toast.error('Не удалось вызвать следующего.');
+        } finally {
+            setIsProcessing(false);
+        }
+    }, [windows]);
     
     // --- ИЗМЕНЕНИЕ: Генерируем ссылку с short_key ---
     const handleOpenWindowModal = useCallback(async (win: WindowWithServices) => {
