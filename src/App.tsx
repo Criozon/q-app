@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import ErrorBoundary from './components/ErrorBoundary';
 
 import HomePage from './pages/HomePage';
 import AdminPage from './pages/AdminPage';
@@ -14,7 +15,7 @@ import { WindowAdminProvider } from './context/WindowAdminProvider';
 
 function App() {
   return (
-    <>
+    <ErrorBoundary>
       <Toaster position="top-center" reverseOrder={false} />
 
       <Router>
@@ -37,7 +38,7 @@ function App() {
           {/* --- КОНЕЦ ИЗМЕНЕНИЯ --- */}
         </Routes>
       </Router>
-    </>
+    </ErrorBoundary>
   );
 }
 

@@ -153,7 +153,7 @@ function HomePage() {
 
     } catch (error) {
         log('HomePage', 'Ошибка при создании очереди:', error);
-        toast.error(`Не удалось создать очередь. ${errorMessage(error)}`, { id: toastId });
+        toast.error(errorMessage(error, 'Не удалось создать очередь. Попробуйте ещё раз.'), { id: toastId });
     } finally {
       setIsLoading(false);
     }

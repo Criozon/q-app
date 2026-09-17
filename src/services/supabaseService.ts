@@ -11,6 +11,7 @@
 import type { PostgrestError, RealtimeChannel } from '@supabase/supabase-js';
 import { supabase, ensureSession } from './supabaseClient';
 import log from '../utils/logger';
+import { withTimeout, TIMEOUTS, TimeoutError } from '../utils/timeout';
 import type {
     Queue, QueueMember, Service, Announcement,
     AdminMember, WindowWithServices, ServiceWithWindows,
@@ -35,7 +36,16 @@ const handleResponse = <T,>(response: Result<T>, context: string): Result<T> => 
 
 // Обёртка: дождаться сессии, выполнить запрос, разобрать ответ.
 const withSession = <T,>(context: string, run: () => Pending<T>): Promise<Result<T>> =>
-    ensureSession().then(run).then(response => handleResponse(response, context));
+    withTimeout(
+        ensureSession().then(run),
+        TIMEOUTS.request,
+        context,
+    ).catch((error: unknown) => {
+        if (error instanceof TimeoutError) {
+            log('Supabase', `Операция не уложилась во время: ${error.operation}`);
+        }
+        throw error;
+    }).then(response => handleResponse(response, context));
 
 /**
  * Функции в базе, возвращающие json, генератор типов описывает как Json.

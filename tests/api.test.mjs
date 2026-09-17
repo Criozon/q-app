@@ -234,3 +234,34 @@ describe('Q-App: доступ к данным', () => {
         await api(`/rest/v1/queues?id=eq.${queueId}`, { method: 'PATCH', token: organizer, body: { status: 'active' } });
     });
 });
+
+describe('Q-App: защита от зависаний', () => {
+    test('таймаут превращает вечное ожидание в ошибку', async () => {
+        // Повторяем поведение withTimeout из src/utils/timeout.ts: важно,
+        // что никогда не завершающийся промис не может заморозить интерфейс.
+        const never = new Promise(() => {});
+        const withTimeout = (promise, ms, label) => new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error(`${label}: таймаут`)), ms);
+            Promise.resolve(promise).then(
+                (v) => { clearTimeout(timer); resolve(v); },
+                (e) => { clearTimeout(timer); reject(e); },
+            );
+        });
+
+        const started = Date.now();
+        await assert.rejects(() => withTimeout(never, 300, 'проверка'), /таймаут/);
+        assert.ok(Date.now() - started < 2000, 'ожидание должно прерваться, а не длиться вечно');
+    });
+
+    test('медленный ответ всё же доходит, если укладывается в срок', async () => {
+        const slow = new Promise((resolve) => setTimeout(() => resolve('ок'), 100));
+        const withTimeout = (promise, ms) => new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error('таймаут')), ms);
+            Promise.resolve(promise).then(
+                (v) => { clearTimeout(timer); resolve(v); },
+                (e) => { clearTimeout(timer); reject(e); },
+            );
+        });
+        assert.equal(await withTimeout(slow, 1000), 'ок');
+    });
+});

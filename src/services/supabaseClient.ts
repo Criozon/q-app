@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { Session } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 import log from '../utils/logger';
+import { withTimeout, TIMEOUTS } from '../utils/timeout';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -32,12 +33,16 @@ let sessionPromise: Promise<Session | null> | null = null;
 export function ensureSession() {
     if (!sessionPromise) {
         sessionPromise = (async () => {
-            const { data: { session } } = await supabase.auth.getSession();
+            // getSession() внутри берёт navigator.locks и при занятой
+            // блокировке ждёт вечно — отсюда обязательный таймаут.
+            const { data: { session } } = await withTimeout(
+                supabase.auth.getSession(), TIMEOUTS.session, 'чтение сессии');
             if (session) {
                 log('auth', 'Сессия восстановлена из localStorage');
                 return session;
             }
-            const { data, error } = await supabase.auth.signInAnonymously();
+            const { data, error } = await withTimeout(
+                supabase.auth.signInAnonymously(), TIMEOUTS.session, 'вход');
             if (error) {
                 // Сбрасываем, чтобы следующая попытка могла повториться —
                 // иначе одна сетевая ошибка при старте убивает приложение навсегда.
@@ -47,7 +52,12 @@ export function ensureSession() {
             }
             log('auth', 'Анонимный вход выполнен');
             return data.session;
-        })();
+        })().catch((error: unknown) => {
+            // Любая неудача не должна замораживать приложение навсегда:
+            // обнуляем промис, чтобы следующий вызов попробовал заново.
+            sessionPromise = null;
+            throw error;
+        });
     }
     return sessionPromise;
 }
