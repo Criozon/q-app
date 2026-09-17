@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -77,32 +77,41 @@ export function WindowAdminProvider({ children }: { children: ReactNode }) {
     
     useEffect(() => { void loadInitialData(true); }, [loadInitialData]);
     
+    /**
+     * Перезагрузка — через ref, а зависимости эффекта — только идентификатор
+     * очереди. Иначе каждое событие меняло объект queueInfo, эффект
+     * пересоздавал каналы, и события, пришедшие в этот момент, терялись.
+     */
+    const loadInitialDataRef = useRef(loadInitialData);
+    useEffect(() => { loadInitialDataRef.current = loadInitialData; }, [loadInitialData]);
+
+    const queueId = queueInfo?.id;
+
     useEffect(() => {
-        if (!queueInfo || !windowInfo || isQueueDeleted) return;
+        if (!queueId || isQueueDeleted) return;
+
+        const channels: ReturnType<typeof service.subscribe>[] = [];
 
         const handleRealtimeEvent = (payload: RealtimePayload) => {
             log(PAGE_SOURCE, `Получено Realtime событие (${payload.table}), тип: ${payload.eventType}.`);
-            if (payload.table === 'queues' && payload.eventType === 'DELETE' && payload.old.id === queueInfo.id) {
+            if (payload.table === 'queues' && payload.eventType === 'DELETE' && payload.old.id === queueId) {
                 log(PAGE_SOURCE, 'Обнаружено удаление очереди! Обновляем UI.');
                 setIsQueueDeleted(true);
-                service.removeSubscription(memberChannel);
-                service.removeSubscription(queueChannel);
-                service.removeSubscription(servicesChannel);
+                channels.forEach(service.removeSubscription);
                 return;
             }
-            void loadInitialData(false);
+            void loadInitialDataRef.current(false);
         };
 
-        const memberChannel = service.subscribe(`window-admin-members-${queueInfo.id}`, { event: '*', schema: 'public', table: 'queue_members', filter: `queue_id=eq.${queueInfo.id}` }, handleRealtimeEvent);
-        const queueChannel = service.subscribe(`window-admin-queue-${queueInfo.id}`, { event: '*', schema: 'public', table: 'queues', filter: `id=eq.${queueInfo.id}`}, handleRealtimeEvent);
-        const servicesChannel = service.subscribe(`window-admin-services-${queueInfo.id}`, { event: '*', schema: 'public', table: 'window_services' }, handleRealtimeEvent);
+        const common = { event: '*', schema: 'public' } as const;
+        channels.push(
+            service.subscribe(`window-members-${queueId}`, { ...common, table: 'queue_members', filter: `queue_id=eq.${queueId}` }, handleRealtimeEvent),
+            service.subscribe(`window-queue-${queueId}`, { ...common, table: 'queues', filter: `id=eq.${queueId}` }, handleRealtimeEvent),
+            service.subscribe(`window-services-${queueId}`, { ...common, table: 'window_services' }, handleRealtimeEvent),
+        );
 
-        return () => {
-            service.removeSubscription(memberChannel);
-            service.removeSubscription(queueChannel);
-            service.removeSubscription(servicesChannel);
-        };
-    }, [queueInfo, windowInfo, isQueueDeleted, loadInitialData]);
+        return () => channels.forEach(service.removeSubscription);
+    }, [queueId, isQueueDeleted]);
 
     const callNext = useCallback(async () => { if (!windowInfo || !queueInfo) return; setIsProcessing(true); try { await service.callNextMemberToWindow(windowInfo.id); } catch { toast.error("Не удалось вызвать участника."); } finally { setIsProcessing(false); } }, [windowInfo, queueInfo]);
     const callSpecific = useCallback(async (memberId: string, assignedMember: Member | undefined) => { if (assignedMember) { toast.error('Завершите текущее обслуживание, чтобы вызвать другого участника.'); return; } setIsProcessing(true); try { await service.callSpecificMember(memberId, windowInfo!.id); } catch { toast.error("Не удалось вызвать этого участника."); } finally { setIsProcessing(false); } }, [windowInfo]);

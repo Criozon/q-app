@@ -68,7 +68,13 @@ function WaitPage() {
         myInfo?.status === 'called' ? 'called-animation' : ''
     ].filter(Boolean).join(' ');
     
+    const soundStopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     const stopNotificationSound = () => {
+        if (soundStopTimer.current) {
+            clearTimeout(soundStopTimer.current);
+            soundStopTimer.current = null;
+        }
         if (audioPlayer.current) {
             audioPlayer.current.pause();
             audioPlayer.current.currentTime = 0;
@@ -220,8 +226,12 @@ function WaitPage() {
 
         const unlockAudio = () => {
             log(PAGE_SOURCE, 'Первое взаимодействие с пользователем, "разблокировка" аудио.');
-            void audioPlayer.current?.play();
-            audioPlayer.current?.pause();
+            // play() отклоняется, если браузер ещё не считает жест достаточным —
+            // это штатно и не должно всплывать необработанным отказом.
+            audioPlayer.current?.play().then(
+                () => audioPlayer.current?.pause(),
+                () => { /* звук разблокируем при следующем касании */ },
+            );
             // Удаляем обработчики после первого же срабатывания
             window.removeEventListener('click', unlockAudio);
             window.removeEventListener('touchstart', unlockAudio);
@@ -304,6 +314,12 @@ function WaitPage() {
                 // --- ИЗМЕНЕНИЕ 3/3: Используем уже "разблокированный" плеер ---
                 if (audioPlayer.current) {
                     audioPlayer.current.play().catch(e => log(PAGE_SOURCE, 'Ошибка воспроизведения аудио', e));
+                    // Звук зациклен, чтобы вызов не пропустили. Но если
+                    // вкладку просто забыли открытой, он будет звенеть
+                    // бесконечно — например, на компьютере организатора,
+                    // где когда-то входили в очередь. Минуты достаточно:
+                    // карточка вызова при этом остаётся на экране.
+                    soundStopTimer.current = setTimeout(stopNotificationSound, 60_000);
                 }
                 
                 if (notificationPermission === 'granted') {

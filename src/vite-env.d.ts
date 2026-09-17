@@ -11,3 +11,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
     readonly env: ImportMetaEnv;
 }
+
+/** Отпечаток сборки: короткий хеш коммита и время. Подставляется Vite. */
+declare const __APP_BUILD__: string;
