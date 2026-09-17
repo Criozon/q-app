@@ -253,12 +253,27 @@ export const callSpecificMember = (memberId: string, windowId: string) =>
 // о том, что именно ему выдали. Время считает сервер — часы устройства
 // администратора сдвинули бы таймеры сразу у всех.
 
-export const startMemberSession = (memberId: string, note: string | null, minutes: number | null) =>
+/**
+ * Принять участника: перевести в «на руках», задать время и окно.
+ *
+ * note === null означает «не трогать пометку»: её часто набирают до того,
+ * как запускают время. Пустая строка очищает — так же, как в SQL.
+ *
+ * windowId нужен, потому что панель окна ищет своих именно по привязке,
+ * а запустить таймер теперь можно и не вызывая человека.
+ */
+export const startMemberSession = (
+    memberId: string,
+    note: string | null,
+    minutes: number | null,
+    windowId?: string | null,
+) =>
     withSession<QueueMember>('startMemberSession', () =>
         asShape<QueueMember>(supabase.rpc('start_member_session', {
             p_member_id: memberId,
             p_note: note ?? undefined,
             p_minutes: minutes ?? undefined,
+            p_window_id: windowId ?? undefined,
         })));
 
 export const extendMemberTimer = (memberId: string, minutes: number) =>

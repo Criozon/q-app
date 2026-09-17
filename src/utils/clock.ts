@@ -61,14 +61,3 @@ export const formatClock = (ms: number): string => {
     const ss = String(seconds).padStart(2, '0');
     return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
 };
-
-/**
- * Порядок карточек: сначала те, у кого время вот-вот кончится или уже
- * кончилось — именно их нужно увидеть первыми. Без таймера — в конец,
- * они никуда не горят.
- */
-export const byTimeLeft = <T extends { timer_ends_at: string | null }>(a: T, b: T): number => {
-    if (!a.timer_ends_at) return b.timer_ends_at ? 1 : 0;
-    if (!b.timer_ends_at) return -1;
-    return Date.parse(a.timer_ends_at) - Date.parse(b.timer_ends_at);
-};
