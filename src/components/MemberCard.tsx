@@ -104,7 +104,14 @@ function MemberCard({
     const left = msUntil(member.timer_ends_at);
     const isOver = left !== null && left <= 0;
     const isRunning = member.status === 'in_service';
-    const canReturn = member.status !== 'waiting' && member.status !== 'serviced';
+    // Закончённых тоже возвращаем. «Закончить» жмут не только когда
+    // человека обслужили: если он не услышал вызова и не подошёл, его
+    // так же закрывают, чтобы не держал очередь. Объявился через полчаса —
+    // должен быть способ вернуть его, не заставляя вставать заново.
+    //
+    // Приоритет получается сам собой: внутри ожидающих порядок по номеру
+    // талона, а у опоздавшего он меньше, чем у всех, кто записался после.
+    const canReturn = member.status !== 'waiting';
 
     const openNote = useCallback(() => {
         setNoteDraft(member.note ?? '');

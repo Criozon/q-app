@@ -128,6 +128,50 @@ describe('Q-App: доступ к данным', () => {
         }
     });
 
+    test('закончённого можно вернуть, и он встаёт впереди поздних', async () => {
+        // «Закончить» жмут не только по факту обслуживания: если человек
+        // не услышал вызова, его закрывают, чтобы не держал очередь.
+        // Объявился позже — возвращаем, и он должен оказаться впереди
+        // тех, кто записался после него. Приоритет даёт номер талона.
+        const own = await api('/rest/v1/rpc/create_queue_with_services_and_windows', {
+            method: 'POST', token: organizer,
+            body: { p_name: `Возврат ${Date.now()}`, p_description: '', p_window_count: 1, p_services: [] } });
+        const ownId = own.data[0].id;
+        try {
+            const q = await api(`/rest/v1/queues?id=eq.${ownId}&select=short_id`, { token: organizer });
+            const short = q.data[0].short_id;
+
+            const ранний = await api('/rest/v1/rpc/join_queue', { method: 'POST', token: organizer,
+                body: { p_short_id: short, p_member_name: 'Опоздавший', p_service_id: null } });
+            const поздний = await api('/rest/v1/rpc/join_queue', { method: 'POST', token: organizer,
+                body: { p_short_id: short, p_member_name: 'Пришёл после', p_service_id: null } });
+            assert.ok(ранний.data.ticket_number < поздний.data.ticket_number);
+
+            // Не услышал вызова — закрыли, чтобы не держал очередь.
+            await api(`/rest/v1/queue_members?id=eq.${ранний.data.id}`, {
+                method: 'PATCH', token: organizer, body: { status: 'serviced' } });
+
+            // Объявился. Возвращаем.
+            await api(`/rest/v1/queue_members?id=eq.${ранний.data.id}`, {
+                method: 'PATCH', token: organizer,
+                body: { status: 'waiting', assigned_window_id: null, acknowledged_at: null } });
+
+            const ждут = await api(
+                `/rest/v1/queue_members?queue_id=eq.${ownId}&status=eq.waiting&select=id,member_name,ticket_number,called_at,serviced_at&order=ticket_number`,
+                { token: organizer });
+
+            assert.equal(ждут.data.length, 2, 'оба должны ждать');
+            assert.equal(ждут.data[0].member_name, 'Опоздавший',
+                'вернувшийся встаёт впереди тех, кто записался после него');
+            // Триггер обязан стереть следы прошлого захода: иначе человек
+            // вернётся в список с чужим временем вызова.
+            assert.equal(ждут.data[0].called_at, null);
+            assert.equal(ждут.data[0].serviced_at, null);
+        } finally {
+            await api(`/rest/v1/queues?id=eq.${ownId}`, { method: 'DELETE', token: organizer });
+        }
+    });
+
     test('негодный токен даёт именно PGRST301', async () => {
         // На этот код опирается повтор запроса со свежей сессией
         // (supabaseService.isAuthFailure). Если Supabase сменит код,
