@@ -60,6 +60,28 @@ describe('Q-App: доступ к данным', () => {
         if (queueId) await api(`/rest/v1/queues?id=eq.${queueId}`, { method: 'DELETE', token: organizer });
     });
 
+    test('негодный токен даёт именно PGRST301', async () => {
+        // На этот код опирается повтор запроса со свежей сессией
+        // (supabaseService.isAuthFailure). Если Supabase сменит код,
+        // приложение перестанет чинить себя само и вернётся к «иногда
+        // не удаётся вызвать участника» до перезагрузки страницы.
+        const broken = organizer.slice(0, -4) + 'AAAA';
+        const res = await api('/rest/v1/queues?select=id', { token: broken });
+        assert.equal(res.status, 401);
+        assert.equal(res.data.code, 'PGRST301',
+            `ожидался PGRST301, пришло ${JSON.stringify(res.data)}`);
+    });
+
+    test('срок жизни токена — час, значит его надо обновлять', async () => {
+        // Приложение живёт во вкладке дольше часа. Проверка на срок в
+        // ensureSession() опирается на то, что токен конечен.
+        const [, payload] = organizer.split('.');
+        const claims = JSON.parse(Buffer.from(payload, 'base64').toString());
+        const minutes = Math.round((claims.exp - claims.iat) / 60);
+        assert.ok(minutes > 0 && minutes <= 120,
+            `неожиданный срок жизни токена: ${minutes} мин`);
+    });
+
     test('без входа таблицы закрыты полностью', async () => {
         const queues = await api('/rest/v1/queues?select=*');
         const members = await api('/rest/v1/queue_members?select=member_name');

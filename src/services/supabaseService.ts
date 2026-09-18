@@ -9,7 +9,7 @@
 // это нужно, чтобы работал Realtime, он тоже подчиняется политикам.
 
 import type { PostgrestError, RealtimeChannel } from '@supabase/supabase-js';
-import { supabase, ensureSession } from './supabaseClient';
+import { supabase, ensureSession, renewSession } from './supabaseClient';
 import log from '../utils/logger';
 import { withTimeout, TIMEOUTS, TimeoutError } from '../utils/timeout';
 import type {
@@ -34,18 +34,36 @@ const handleResponse = <T,>(response: Result<T>, context: string): Result<T> => 
     return response;
 };
 
+/**
+ * Ответ на протухший или негодный JWT. База отвечает 401 с кодом
+ * PGRST301 — по нему отличаем «сессия мертва» от «нет прав».
+ */
+const isAuthFailure = (error: PostgrestError | null): boolean =>
+    error?.code === 'PGRST301' || /JWT|token/i.test(error?.message ?? '');
+
 // Обёртка: дождаться сессии, выполнить запрос, разобрать ответ.
-const withSession = <T,>(context: string, run: () => Pending<T>): Promise<Result<T>> =>
-    withTimeout(
-        ensureSession().then(run),
-        TIMEOUTS.request,
-        context,
-    ).catch((error: unknown) => {
-        if (error instanceof TimeoutError) {
-            log('Supabase', `Операция не уложилась во время: ${error.operation}`);
-        }
-        throw error;
-    }).then(response => handleResponse(response, context));
+//
+// Одна повторная попытка на мёртвой сессии — приложение чинится само.
+// Раньше сорвавшееся фоновое обновление токена означало 401 на каждое
+// действие до перезагрузки страницы.
+const withSession = <T,>(context: string, run: () => Pending<T>): Promise<Result<T>> => {
+    const attempt = () => withTimeout(ensureSession().then(run), TIMEOUTS.request, context)
+        .catch((error: unknown) => {
+            if (error instanceof TimeoutError) {
+                log('Supabase', `Операция не уложилась во время: ${error.operation}`);
+            }
+            throw error;
+        });
+
+    return attempt()
+        .then(async response => {
+            if (!isAuthFailure(response.error)) return response;
+            log('Supabase', `[${context}] сессия негодна, обновляем и повторяем`, response.error);
+            await renewSession();
+            return attempt();
+        })
+        .then(response => handleResponse(response, context));
+};
 
 /**
  * Функции в базе, возвращающие json, генератор типов описывает как Json.
