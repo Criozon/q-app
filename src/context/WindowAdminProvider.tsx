@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import QRCode from 'qrcode';
 import log from '../utils/logger';
+import { useWakeRefresh } from '../hooks/useWakeRefresh';
 import * as service from '../services/supabaseService';
 import type { RealtimePayload } from '../services/supabaseService';
 import type { WindowAdminData } from '../types/domain';
@@ -108,6 +109,11 @@ export function WindowAdminProvider({ children }: { children: ReactNode }) {
 
     const queueId = queueInfo?.id;
 
+    // Планшет у окна засыпает так же, как телефон в кармане.
+    const wakeGeneration = useWakeRefresh(useCallback(() => {
+        void loadInitialDataRef.current(false);
+    }, []));
+
     useEffect(() => {
         if (!queueId || isQueueDeleted) return;
 
@@ -132,7 +138,7 @@ export function WindowAdminProvider({ children }: { children: ReactNode }) {
         );
 
         return () => channels.forEach(service.removeSubscription);
-    }, [queueId, isQueueDeleted]);
+    }, [queueId, isQueueDeleted, wakeGeneration]);
 
     const callNext = useCallback(async () => { if (!windowInfo || !queueInfo) return; setIsProcessing(true); try { await service.callNextMemberToWindow(windowInfo.id); } catch (err) { log(PAGE_SOURCE, "Не удалось вызвать участника.", err); toast.error(`Не удалось вызвать участника. ${errorMessage(err, '')}`.trim()); } finally { setIsProcessing(false); } }, [windowInfo, queueInfo]);
     // Запрета «сначала закончите с текущим» больше нет: по очереди может

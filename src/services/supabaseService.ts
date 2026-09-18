@@ -106,6 +106,14 @@ export const subscribe = (
     return channel;
 };
 
+/**
+ * Жив ли сокет реального времени.
+ *
+ * После сна устройства он бывает мёртв при живом с виду состоянии —
+ * но если библиотека сама видит обрыв, верить ей можно.
+ */
+export const isRealtimeLive = (): boolean => supabase.realtime.isConnected();
+
 export const removeSubscription = (channel: RealtimeChannel | null | undefined) => {
     if (channel) { void supabase.removeChannel(channel); }
 };

@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import type { Database } from '../types/database';
 import log from '../utils/logger';
 import { withTimeout, TIMEOUTS } from '../utils/timeout';
+import { makeBoundedLock } from '../utils/sessionLock';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -11,6 +12,8 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     auth: {
         persistSession: true,
         autoRefreshToken: true,
+        // Почему не стандартный замок — см. utils/sessionLock.ts.
+        lock: makeBoundedLock(globalThis.navigator?.locks),
     },
     realtime: { params: { eventsPerSecond: 10 } },
 });
