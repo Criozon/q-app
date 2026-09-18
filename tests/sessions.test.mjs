@@ -240,6 +240,30 @@ describe('Q-App: выдача под таймер', () => {
         assert.ok(data.server_now);
     });
 
+    test('завершение приёма гасит таймер, но оставляет пометку', async () => {
+        // Закрыли досрочно — лодку вернули раньше срока. Отсчёт при этом
+        // продолжал идти и через минуту показывал просрочку у зачёркнутого
+        // участника. Пометка, наоборот, остаётся: это запись о том, что
+        // человеку выдавали.
+        const guest = await join('Вернулся раньше');
+        await api('/rest/v1/rpc/start_member_session', {
+            method: 'POST', token: organizer,
+            body: { p_member_id: guest.id, p_note: 'Лодка 4', p_minutes: 60, p_window_id: windowId },
+        });
+
+        await api(`/rest/v1/queue_members?id=eq.${guest.id}`, {
+            method: 'PATCH', token: organizer, body: { status: 'serviced' },
+        });
+
+        const after = await api(
+            `/rest/v1/queue_members?id=eq.${guest.id}&select=status,note,timer_ends_at,serviced_at`,
+            { token: organizer });
+        assert.equal(after.data[0].status, 'serviced');
+        assert.equal(after.data[0].timer_ends_at, null, 'у закрытого участника таймер не идёт');
+        assert.equal(after.data[0].note, 'Лодка 4', 'пометка остаётся записью о выданном');
+        assert.ok(after.data[0].serviced_at);
+    });
+
     test('возврат в очередь обнуляет пометку и таймер', async () => {
         const guest = await join('Вернувшийся');
         await api('/rest/v1/rpc/start_member_session', {
