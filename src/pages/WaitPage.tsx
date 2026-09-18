@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Bell, BellOff, Check, X, Clock, Megaphone, PauseCircle, WifiOff } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -12,6 +12,7 @@ import * as service from '../services/supabaseService';
 import { clearActiveSession } from '../utils/session';
 import { useWakeLock } from '../hooks/useWakeLock';
 import { useTicker } from '../hooks/useTicker';
+import { useWakeRefresh } from '../hooks/useWakeRefresh';
 import { syncClock, msUntil, formatClock, formatDuration } from '../utils/clock';
 // В Safari на iOS объекта Notification нет вообще — он появляется только
 // в PWA, установленном на домашний экран. Прямое обращение
@@ -90,7 +91,14 @@ function WaitPage() {
         }
     };
 
+    // Кнопка держит собственное состояние: со сна запрос уходит по
+    // просыпающейся сети и может думать несколько секунд. Без этого
+    // нажатие выглядело как непринятое — и человек жал ещё раз.
+    const [isAcknowledging, setIsAcknowledging] = useState(false);
+
     const handleAcknowledgeCall = async () => {
+        if (isAcknowledging) return;
+        setIsAcknowledging(true);
         stopNotificationSound();
         const toastId = toast.loading('Подтверждаем...');
         try {
@@ -100,6 +108,8 @@ function WaitPage() {
         } catch (err) {
             log(PAGE_SOURCE, 'Не удалось отправить подтверждение.', err);
             toast.error(`Не удалось отправить подтверждение. ${toErrorMessage(err, '')}`.trim(), { id: toastId });
+        } finally {
+            setIsAcknowledging(false);
         }
     };
 
@@ -267,6 +277,17 @@ function WaitPage() {
     }, []);
     // --- КОНЕЦ ИЗМЕНЕНИЯ ---
 
+    // Проверка статуса живёт в ref: её зовут и подписки, и пробуждение,
+    // а зависеть от неё эффекту нельзя — она пересоздаётся каждый рендер.
+    const checkMyStatusRef = useRef(checkMyStatus);
+    useEffect(() => { checkMyStatusRef.current = checkMyStatus; });
+
+    // Вернулись к человеку — переспрашиваем сервер, не дожидаясь опроса.
+    const wakeGeneration = useWakeRefresh(useCallback(() => {
+        setNotificationPermission(getNotificationPermission());
+        void checkMyStatusRef.current();
+    }, []));
+
     useEffect(() => {
         const handleRealtimeEvent = (payload: RealtimePayload) => {
             log(PAGE_SOURCE, `Получено Realtime ${payload.eventType} событие для таблицы ${payload.table}`);
@@ -300,12 +321,7 @@ function WaitPage() {
             setNotificationPermission(getNotificationPermission());
         };
         
-        const handleVisibilityChange = () => {
-             if (document.visibilityState === 'visible') setNotificationPermission(getNotificationPermission());
-        };
-
         window.addEventListener('pageshow', handlePageShow);
-        document.addEventListener('visibilitychange', handleVisibilityChange);
         
         void checkMyStatus();
 
@@ -315,10 +331,11 @@ function WaitPage() {
             service.removeSubscription(queueChannel);
             service.removeSubscription(announcementChannel);
             window.removeEventListener('pageshow', handlePageShow);
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
+    // wakeGeneration: после сна каналы пересобираются — эффект снимает
+    // старые и заводит новые.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [memberId, queueId]);
+    }, [memberId, queueId, wakeGeneration]);
 
     /**
      * Предупреждения по выданному времени: за пять минут до конца и в сам
@@ -491,7 +508,7 @@ function WaitPage() {
                             <Button onClick={handleDeclineCall} className={styles.declineButton}>
                                 <X size={20} /> Отказаться
                             </Button>
-                            <Button onClick={handleAcknowledgeCall} className={styles.acknowledgeButton}>
+                            <Button onClick={handleAcknowledgeCall} isLoading={isAcknowledging} className={styles.acknowledgeButton}>
                                 <Check size={20} /> Я иду!
                             </Button>
                         </div>

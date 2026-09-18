@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import QRCode from 'qrcode';
 import log from '../utils/logger';
+import { useWakeRefresh } from '../hooks/useWakeRefresh';
 import * as service from '../services/supabaseService';
 import type { RealtimePayload } from '../services/supabaseService';
 import type { Queue, AdminMember, WindowWithServices, ServiceWithWindows } from '../types/domain';
@@ -97,6 +98,12 @@ export function QueueProvider({ children }: { children: ReactNode }) {
   const loadQueueDataRef = useRef(loadQueueData);
   useEffect(() => { loadQueueDataRef.current = loadQueueData; }, [loadQueueData]);
 
+  // Планшет оператора тоже засыпает. Вернулись — переспрашиваем сервер
+  // и, если спали долго, пересобираем подписки.
+  const wakeGeneration = useWakeRefresh(useCallback(() => {
+    void loadQueueDataRef.current(false);
+  }, []));
+
   // Только идентификатор: строка меняется, лишь когда меняется сама очередь.
   const queueId = queue?.id;
 
@@ -120,7 +127,7 @@ export function QueueProvider({ children }: { children: ReactNode }) {
     ];
 
     return () => channels.forEach(service.removeSubscription);
-  }, [queueId]);
+  }, [queueId, wakeGeneration]);
 
   const waitingMembersCount = useMemo(() => members.filter(m => m.status === 'waiting').length, [members]);
 
