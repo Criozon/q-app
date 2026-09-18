@@ -134,26 +134,26 @@ export function WindowAdminProvider({ children }: { children: ReactNode }) {
         return () => channels.forEach(service.removeSubscription);
     }, [queueId, isQueueDeleted]);
 
-    const callNext = useCallback(async () => { if (!windowInfo || !queueInfo) return; setIsProcessing(true); try { await service.callNextMemberToWindow(windowInfo.id); } catch { toast.error("Не удалось вызвать участника."); } finally { setIsProcessing(false); } }, [windowInfo, queueInfo]);
+    const callNext = useCallback(async () => { if (!windowInfo || !queueInfo) return; setIsProcessing(true); try { await service.callNextMemberToWindow(windowInfo.id); } catch (err) { log(PAGE_SOURCE, "Не удалось вызвать участника.", err); toast.error(`Не удалось вызвать участника. ${errorMessage(err, '')}`.trim()); } finally { setIsProcessing(false); } }, [windowInfo, queueInfo]);
     // Запрета «сначала закончите с текущим» больше нет: по очереди может
     // идти лодка, а освободиться катамаран — и позвать нужно того, кто
     // дальше в списке.
-    const callSpecific = useCallback(async (memberId: string) => { setIsProcessing(true); try { await service.callSpecificMember(memberId, windowInfo!.id); } catch { toast.error("Не удалось вызвать этого участника."); } finally { setIsProcessing(false); } }, [windowInfo]);
-    const completeService = useCallback(async (memberId: string) => { setIsProcessing(true); try { await service.updateMemberStatus(memberId, 'serviced'); } catch { toast.error('Не удалось завершить обслуживание.'); } finally { setIsProcessing(false); } }, []);
+    const callSpecific = useCallback(async (memberId: string) => { setIsProcessing(true); try { await service.callSpecificMember(memberId, windowInfo!.id); } catch (err) { log(PAGE_SOURCE, "Не удалось вызвать этого участника.", err); toast.error(`Не удалось вызвать этого участника. ${errorMessage(err, '')}`.trim()); } finally { setIsProcessing(false); } }, [windowInfo]);
+    const completeService = useCallback(async (memberId: string) => { setIsProcessing(true); try { await service.updateMemberStatus(memberId, 'serviced'); } catch (err) { log(PAGE_SOURCE, 'Не удалось завершить обслуживание.', err); toast.error(`Не удалось завершить обслуживание. ${errorMessage(err, '')}`.trim()); } finally { setIsProcessing(false); } }, []);
 
     const startTimer = useCallback(async (memberId: string, minutes: number) => {
         setIsProcessing(true);
         // Окно передаём явно: иначе принятый без вызова участник не
         // попадёт в эту панель — она ищет своих по привязке.
         try { await service.startMemberSession(memberId, null, minutes, windowInfo?.id ?? null); }
-        catch { toast.error('Не удалось запустить время.'); }
+        catch (err) { log(PAGE_SOURCE, 'Не удалось запустить время.', err); toast.error(`Не удалось запустить время. ${errorMessage(err, '')}`.trim()); }
         finally { setIsProcessing(false); }
     }, [windowInfo]);
 
     const extendTimer = useCallback(async (memberId: string, minutes: number) => {
         setIsProcessing(true);
         try { await service.extendMemberTimer(memberId, minutes); }
-        catch { toast.error('Не удалось продлить время.'); }
+        catch (err) { log(PAGE_SOURCE, 'Не удалось продлить время.', err); toast.error(`Не удалось продлить время. ${errorMessage(err, '')}`.trim()); }
         finally { setIsProcessing(false); }
     }, []);
 
@@ -161,9 +161,9 @@ export function WindowAdminProvider({ children }: { children: ReactNode }) {
     // из-за неё остальные кнопки незачем.
     const saveNote = useCallback(async (memberId: string, note: string | null) => {
         try { await service.updateMemberNote(memberId, note); }
-        catch { toast.error('Не удалось сохранить заметку.'); }
+        catch (err) { log(PAGE_SOURCE, 'Не удалось сохранить заметку.', err); toast.error(`Не удалось сохранить заметку. ${errorMessage(err, '')}`.trim()); }
     }, []);
-    const returnToQueue = useCallback(async (memberId: string) => { setIsProcessing(true); try { await service.returnMemberToWaiting(memberId); } catch { toast.error('Не удалось вернуть участника в очередь.'); } finally { setIsProcessing(false); } }, []);
+    const returnToQueue = useCallback(async (memberId: string) => { setIsProcessing(true); try { await service.returnMemberToWaiting(memberId); } catch (err) { log(PAGE_SOURCE, 'Не удалось вернуть участника в очередь.', err); toast.error(`Не удалось вернуть участника в очередь. ${errorMessage(err, '')}`.trim()); } finally { setIsProcessing(false); } }, []);
     
     const assignedMember = useMemo(() => members.find(m => m.assigned_window_id === windowInfo?.id && (m.status === 'called' || m.status === 'acknowledged')), [members, windowInfo]);
     

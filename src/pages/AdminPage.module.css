@@ -31,6 +31,8 @@
   flex: 1 1 auto;
   min-width: 0;
   text-align: center;
+  /* Без этого строка с nowrap не подрезается, а наезжает на кнопки. */
+  overflow: hidden;
 }
 
 .headerTitle {
@@ -40,6 +42,21 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Точки состояния в этом модуле не было вовсе: styles.statusIndicator
+   разрешался в undefined, и кружок никогда не рисовался. Заметно стало,
+   когда слово «Активна» убрали из шапки ради места. */
+.statusIndicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background-color: var(--accent-green);
+}
+
+.statusIndicatorPaused {
+  background-color: #ff9500;
 }
 
 .queueCount {
@@ -298,8 +315,10 @@
 .saveSettingsButton {
     margin-top: 8px;
 }
+/* Объявления живут в окне — своя рамка им больше не нужна. */
 .announcePanel {
-  padding: 16px !important;
+  display: flex;
+  flex-direction: column;
 }
 
 .announceHint {
@@ -403,4 +422,47 @@
   justify-content: space-between;
   padding: 8px 0;
   border-top: 1px solid #e5e5ea;
+}
+
+/* --- Журнал сбоев (на период отладки) ----------------------------------- */
+
+.logBlock {
+  margin-top: 16px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 12px;
+}
+
+.logSummary {
+  font-size: 14px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  /* Палец, а не курсор. */
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.logText {
+  margin: 0 0 12px;
+  padding: 10px;
+  max-height: 200px;
+  overflow: auto;
+  border-radius: 10px;
+  background-color: var(--background);
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.5;
+  /* Переносим длинные строки: горизонтальная прокрутка в окне мучительна. */
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.logActions {
+  display: flex;
+  gap: 8px;
+}
+
+.logButton {
+  background-color: #8e8e93;
+  flex: 1;
 }

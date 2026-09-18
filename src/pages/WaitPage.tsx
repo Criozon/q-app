@@ -97,8 +97,9 @@ function WaitPage() {
             const { error } = await service.acknowledgeCall(myInfo!.id);
             if (error) throw error;
             toast.success('Администратор уведомлен, что вы идете!', { id: toastId });
-        } catch {
-            toast.error('Не удалось отправить подтверждение.', { id: toastId });
+        } catch (err) {
+            log(PAGE_SOURCE, 'Не удалось отправить подтверждение.', err);
+            toast.error(`Не удалось отправить подтверждение. ${toErrorMessage(err, '')}`.trim(), { id: toastId });
         }
     };
 
@@ -141,8 +142,9 @@ function WaitPage() {
                     clearActiveSession();
                     toast.success('Вы успешно покинули очередь.', { id: toastId });
                     navigate('/');
-                } catch {
-                    toast.error('Не удалось выйти из очереди.', { id: toastId });
+                } catch (err) {
+                    log(PAGE_SOURCE, 'Не удалось выйти из очереди.', err);
+                    toast.error(`Не удалось выйти из очереди. ${toErrorMessage(err, '')}`.trim(), { id: toastId });
                 } finally {
                     setIsLeaving(false);
                 }
