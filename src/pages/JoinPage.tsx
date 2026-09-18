@@ -13,6 +13,8 @@ import { setActiveSession, clearActiveSession, getActiveSession } from '../utils
 import type { ActiveSession, JoinDetails } from '../types/domain';
 import { errorMessage, errorIncludes } from '../utils/errors';
 
+const PAGE_SOURCE = 'JoinPage';
+
 function JoinPage() {
     const { shortId } = useParams<{ shortId: string }>();
     const navigate = useNavigate();
@@ -80,8 +82,11 @@ function JoinPage() {
                 const { data } = await service.getQueueForJoin(shortId);
                 if (!data?.queue) return;
                 setQueue(prev => (prev ? { ...prev, ...data.queue } : data.queue));
-            } catch {
-                // молча: временная сетевая ошибка не должна ломать страницу
+            } catch (err) {
+                // Молча для человека: временная сетевая заминка не должна
+                // ломать страницу. Но в журнал пишем — иначе такие сбои
+                // не отследить вовсе.
+                log(PAGE_SOURCE, 'Опрос очереди не удался', err);
             }
         }, 20000);
         return () => clearInterval(timer);

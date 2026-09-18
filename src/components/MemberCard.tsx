@@ -170,7 +170,7 @@ function MemberCard({
                             и вытесняла состояние. */}
                         {member.note && <span className={styles.metaNote}>{member.note}</span>}
                         <span className={isOver ? styles.metaOverdue : undefined}>
-                            {member.note ? ' · ' : ''}
+                            {member.note ? '   ' : ''}
                             {isOver ? 'Просрочено' : statusText}
                         </span>
                         {member.service_name && (
@@ -291,13 +291,21 @@ function MemberCard({
                 разъезжается под пальцем и соседние строки уезжают. */}
             <Modal isOpen={modal === 'note'} onClose={() => setModal('none')} title="Заметка">
                 <div className={styles.noteModal}>
-                    <input
+                    <textarea
                         className={styles.noteInput}
                         value={noteDraft}
                         onChange={event => setNoteDraft(event.target.value)}
-                        onKeyDown={event => { if (event.key === 'Enter') commitNote(); }}
+                        // Enter сохраняет, перенос строки — Shift+Enter:
+                        // заметки короткие, и лишний тап по кнопке не нужен.
+                        onKeyDown={event => {
+                            if (event.key === 'Enter' && !event.shiftKey) {
+                                event.preventDefault();
+                                commitNote();
+                            }
+                        }}
                         placeholder="Катамаран 3, кабина 2…"
-                        maxLength={60}
+                        maxLength={160}
+                        rows={3}
                         autoFocus
                     />
                     <Button onClick={commitNote} className={styles.noteSave}>Сохранить</Button>

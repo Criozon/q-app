@@ -21,7 +21,8 @@ import homeStyles from './HomePage.module.css';
 import MemberCard from '../components/MemberCard';
 import { byWorkOrder } from '../utils/memberOrder';
 import styles from './AdminPage.module.css';
-import log from '../utils/logger';
+import log, { formatLog, logSize, clearLog } from '../utils/logger';
+import { errorMessage } from '../utils/errors';
 import type { ConfirmationState, ServiceDraft, QueueStats, Announcement, AdminMember, WindowWithServices } from '../types/domain';
 
 const PAGE_SOURCE = 'MasterAdminPage';
@@ -47,6 +48,8 @@ function AdminPage() {
     const [isPostingAnnouncement, setIsPostingAnnouncement] = useState(false);
     const [stats, setStats] = useState<QueueStats | null>(null);
     const [isStatsOpen, setIsStatsOpen] = useState(false);
+    // Объявления нужны изредка, а блок занимал экран постоянно.
+    const [isAnnounceOpen, setIsAnnounceOpen] = useState(false);
 
     const [newServiceName, setNewServiceName] = useState('');
     const [isAddingService, setIsAddingService] = useState(false);
@@ -82,8 +85,9 @@ function AdminPage() {
             const { data } = await service.addService(queue!.id, newServiceName.trim());
             setEditableServices(prev => [...prev, { ...data, window_indices: [] }]);
             setNewServiceName('');
-        } catch {
-            toast.error('Не удалось добавить услугу.');
+        } catch (err) {
+            log(PAGE_SOURCE, 'Не удалось добавить услугу.', err);
+            toast.error(`Не удалось добавить услугу. ${errorMessage(err, '')}`.trim());
         } finally {
             setIsAddingService(false);
         }
@@ -128,8 +132,9 @@ function AdminPage() {
             await Promise.all([...assignmentPromises, ...deletedServicePromises]);
             
             toast.success('Настройки успешно сохранены!', { id: toastId });
-        } catch {
-            toast.error('Не удалось сохранить настройки.', { id: toastId });
+        } catch (err) {
+            log(PAGE_SOURCE, 'Не удалось сохранить настройки.', err);
+            toast.error(`Не удалось сохранить настройки. ${errorMessage(err, '')}`.trim(), { id: toastId });
         } finally {
             await loadQueueData();
             setIsSavingSettings(false);
@@ -148,8 +153,9 @@ function AdminPage() {
         setIsProcessing(true);
         try {
             await service.callSpecificMember(memberId, windowId);
-        } catch {
-            toast.error('Не удалось вызвать участника.');
+        } catch (err) {
+            log(PAGE_SOURCE, 'Не удалось вызвать участника.', err);
+            toast.error(`Не удалось вызвать участника. ${errorMessage(err, '')}`.trim());
         } finally {
             setIsProcessing(false);
         }
@@ -159,8 +165,9 @@ function AdminPage() {
         setIsProcessing(true);
         try {
             await service.updateMemberStatus(memberId, 'serviced');
-        } catch {
-            toast.error('Не удалось завершить обслуживание.');
+        } catch (err) {
+            log(PAGE_SOURCE, 'Не удалось завершить обслуживание.', err);
+            toast.error(`Не удалось завершить обслуживание. ${errorMessage(err, '')}`.trim());
         } finally {
             setIsProcessing(false);
         }
@@ -174,8 +181,9 @@ function AdminPage() {
         try {
             const windowId = windows.length === 1 ? windows[0].id : null;
             await service.startMemberSession(memberId, null, minutes, windowId);
-        } catch {
-            toast.error('Не удалось запустить время.');
+        } catch (err) {
+            log(PAGE_SOURCE, 'Не удалось запустить время.', err);
+            toast.error(`Не удалось запустить время. ${errorMessage(err, '')}`.trim());
         } finally {
             setIsProcessing(false);
         }
@@ -185,8 +193,9 @@ function AdminPage() {
         setIsProcessing(true);
         try {
             await service.extendMemberTimer(memberId, minutes);
-        } catch {
-            toast.error('Не удалось продлить время.');
+        } catch (err) {
+            log(PAGE_SOURCE, 'Не удалось продлить время.', err);
+            toast.error(`Не удалось продлить время. ${errorMessage(err, '')}`.trim());
         } finally {
             setIsProcessing(false);
         }
@@ -197,8 +206,9 @@ function AdminPage() {
     const saveNote = useCallback(async (memberId: string, note: string | null) => {
         try {
             await service.updateMemberNote(memberId, note);
-        } catch {
-            toast.error('Не удалось сохранить заметку.');
+        } catch (err) {
+            log(PAGE_SOURCE, 'Не удалось сохранить заметку.', err);
+            toast.error(`Не удалось сохранить заметку. ${errorMessage(err, '')}`.trim());
         }
     }, []);
 
@@ -206,8 +216,9 @@ function AdminPage() {
         setIsProcessing(true);
         try {
             await service.returnMemberToWaiting(memberId);
-        } catch {
-            toast.error('Не удалось вернуть участника в очередь.');
+        } catch (err) {
+            log(PAGE_SOURCE, 'Не удалось вернуть участника в очередь.', err);
+            toast.error(`Не удалось вернуть участника в очередь. ${errorMessage(err, '')}`.trim());
         } finally {
             setIsProcessing(false);
         }
@@ -218,8 +229,9 @@ function AdminPage() {
         setIsProcessing(true);
         try {
             await service.callNextMemberToWindow(windows[0].id);
-        } catch {
-            toast.error('Не удалось вызвать следующего.');
+        } catch (err) {
+            log(PAGE_SOURCE, 'Не удалось вызвать следующего.', err);
+            toast.error(`Не удалось вызвать следующего. ${errorMessage(err, '')}`.trim());
         } finally {
             setIsProcessing(false);
         }
@@ -264,8 +276,9 @@ function AdminPage() {
             setAnnouncementDraft('');
             await loadAnnouncements();
             toast.success('Объявление отправлено всем ожидающим.');
-        } catch {
-            toast.error('Не удалось отправить объявление.');
+        } catch (err) {
+            log(PAGE_SOURCE, 'Не удалось отправить объявление.', err);
+            toast.error(`Не удалось отправить объявление. ${errorMessage(err, '')}`.trim());
         } finally {
             setIsPostingAnnouncement(false);
         }
@@ -275,18 +288,29 @@ function AdminPage() {
         try {
             await service.deleteAnnouncement(id);
             await loadAnnouncements();
-        } catch {
-            toast.error('Не удалось удалить объявление.');
+        } catch (err) {
+            log(PAGE_SOURCE, 'Не удалось удалить объявление.', err);
+            toast.error(`Не удалось удалить объявление. ${errorMessage(err, '')}`.trim());
         }
     }, [loadAnnouncements]);
+
+    const handleCopyLog = useCallback(() => {
+        navigator.clipboard.writeText(formatLog())
+            .then(() => { setCopiedKey('log'); setTimeout(() => setCopiedKey(null), 2000); })
+            .catch(err => {
+                log(PAGE_SOURCE, 'Не удалось скопировать журнал', err);
+                toast.error('Не удалось скопировать журнал.');
+            });
+    }, []);
 
     const handleOpenStats = useCallback(async () => {
         setIsStatsOpen(true);
         try {
             const { data } = await service.getQueueStats(queue!.id);
             setStats(data);
-        } catch {
-            toast.error('Не удалось загрузить итоги.');
+        } catch (err) {
+            log(PAGE_SOURCE, 'Не удалось загрузить итоги.', err);
+            toast.error(`Не удалось загрузить итоги. ${errorMessage(err, '')}`.trim());
         }
     }, [queue]);
     const handleRemoveMember = useCallback((member: AdminMember) => { setConfirmation({ isOpen: true, title: 'Удалить участника?', message: <p>Вы уверены, что хотите удалить <strong>{member.member_name} ({member.display_code})</strong> из очереди?</p>, confirmText: 'Да, удалить', isDestructive: true, onConfirm: async () => { await service.deleteMember(member.id); toast.success(`Участник ${member.member_name} удален.`);},});}, []);
@@ -339,10 +363,14 @@ function AdminPage() {
                         </div>
                         <div className={styles.headerCenter}>
                             <h1 className={styles.headerTitle}>{queue?.name}</h1>
-                            <div className={styles.queueCount}><div className={`${styles.statusIndicator} ${queue?.status === 'paused' ? styles.statusIndicatorPaused : ''}`}></div><span>{queue?.status === 'active' ? 'Активна' : 'Пауза'} | В очереди: {waitingMembersCount}</span></div>
+                            <div className={styles.queueCount}><div className={`${styles.statusIndicator} ${queue?.status === 'paused' ? styles.statusIndicatorPaused : ''}`}></div>{/* «Активна» не пишем: об этом говорит точка слева, а места в шапке
+                                    после шестой пиктограммы не осталось. Пауза — состояние
+                                    исключительное, её называем словом. */}
+                                <span>{queue?.status === 'paused' ? 'Пауза · ' : ''}В очереди: {waitingMembersCount}</span></div>
                         </div>
                         <div className={styles.rightActions}>
                             <button onClick={handleToggleQueueStatus} className={styles.controlButton} title={queue?.status === 'active' ? 'Приостановить запись' : 'Возобновить запись'}>{queue?.status === 'active' ? <PauseCircle size={24} color="#ff9500" /> : <PlayCircle size={24} color="var(--accent-green)" />}</button>
+                            <button onClick={() => setIsAnnounceOpen(true)} className={styles.controlButton} title="Объявление для очереди"><Megaphone size={22} color="var(--accent-blue)" /></button>
                             <button onClick={() => setIsJoinModalOpen(true)} className={styles.controlButton} title="Показать QR-код и ссылку для входа"><QrCode size={24} color="var(--accent-blue)" /></button>
                         </div>
                     </div>
@@ -363,48 +391,6 @@ function AdminPage() {
                         ))}</div>
                     </Section>
                 )}
-                <Section title="Объявление для очереди">
-                    <Card className={styles.announcePanel}>
-                        <p className={styles.announceHint}>
-                            Сообщение увидят все, кто ждёт прямо сейчас — например, что приём задерживается.
-                        </p>
-                        <div className={styles.announceRow}>
-                            <Input
-                                placeholder="Врач задерживается на 15 минут"
-                                value={announcementDraft}
-                                maxLength={500}
-                                onChange={(e) => setAnnouncementDraft(e.target.value)}
-                                onKeyPress={(e) => e.key === 'Enter' && handlePostAnnouncement()}
-                            />
-                            <Button
-                                onClick={handlePostAnnouncement}
-                                isLoading={isPostingAnnouncement}
-                                disabled={!announcementDraft.trim()}
-                                className={styles.announceButton}
-                                title="Отправить объявление"
-                            >
-                                <Send size={18} />
-                            </Button>
-                        </div>
-                        {announcements.length > 0 && (
-                            <div className={styles.announceList}>
-                                {announcements.map(a => (
-                                    <div key={a.id} className={styles.announceItem}>
-                                        <Megaphone size={16} />
-                                        <span>{a.body}</span>
-                                        <button
-                                            className={styles.announceDelete}
-                                            onClick={() => handleDeleteAnnouncement(a.id)}
-                                            title="Удалить объявление"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </Card>
-                </Section>
 
                 <Section title="Общая очередь">
                     {/* Всё управление — на карточках: отдельные кнопки внизу
@@ -469,6 +455,49 @@ function AdminPage() {
                 </div>)}
             </Modal>
             
+            <Modal isOpen={isAnnounceOpen} onClose={() => setIsAnnounceOpen(false)} title="Объявление для очереди">
+                    <div className={styles.announcePanel}>
+                        <p className={styles.announceHint}>
+                            Сообщение увидят все, кто ждёт прямо сейчас — например, что приём задерживается.
+                        </p>
+                        <div className={styles.announceRow}>
+                            <Input
+                                placeholder="Врач задерживается на 15 минут"
+                                value={announcementDraft}
+                                maxLength={500}
+                                onChange={(e) => setAnnouncementDraft(e.target.value)}
+                                onKeyPress={(e) => e.key === 'Enter' && handlePostAnnouncement()}
+                            />
+                            <Button
+                                onClick={handlePostAnnouncement}
+                                isLoading={isPostingAnnouncement}
+                                disabled={!announcementDraft.trim()}
+                                className={styles.announceButton}
+                                title="Отправить объявление"
+                            >
+                                <Send size={18} />
+                            </Button>
+                        </div>
+                        {announcements.length > 0 && (
+                            <div className={styles.announceList}>
+                                {announcements.map(a => (
+                                    <div key={a.id} className={styles.announceItem}>
+                                        <Megaphone size={16} />
+                                        <span>{a.body}</span>
+                                        <button
+                                            className={styles.announceDelete}
+                                            onClick={() => handleDeleteAnnouncement(a.id)}
+                                            title="Удалить объявление"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+            </Modal>
+
             <Modal isOpen={isStatsOpen} onClose={() => setIsStatsOpen(false)} title="Итоги очереди">
                 {!stats ? <Spinner /> : (
                     <div className={styles.statsGrid}>
@@ -530,6 +559,22 @@ function AdminPage() {
                     <Button onClick={handleSaveSettings} isLoading={isSavingSettings} className={styles.saveSettingsButton}>
                       Сохранить и закрыть
                     </Button>
+
+                    {/* Журнал на период отладки. Сбои случаются на телефоне,
+                        где консоли нет, и без него от них остаётся только
+                        «не удалось» без причины. */}
+                    <details className={styles.logBlock}>
+                        <summary className={styles.logSummary}>Журнал сбоев ({logSize()})</summary>
+                        <pre className={styles.logText}>{formatLog() || 'Пока ничего не записано.'}</pre>
+                        <div className={styles.logActions}>
+                            <Button onClick={handleCopyLog} className={styles.logButton}>
+                                {copiedKey === 'log' ? <><Check size={16} /> Скопировано</> : 'Скопировать'}
+                            </Button>
+                            <Button onClick={() => { clearLog(); setCopiedKey(null); }} className={styles.logButton}>
+                                Очистить
+                            </Button>
+                        </div>
+                    </details>
                 </Card>
             </Modal>
 
