@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Check, PhoneCall, Undo2, UserX, Timer, MessageSquare } from 'lucide-react';
+import { Check, PhoneCall, Undo2, UserX, Timer } from 'lucide-react';
 import Card from './Card';
 import Modal from './Modal';
 import Button from './Button';
@@ -85,8 +85,12 @@ function MemberCard({
         else onStartTimer?.(member.id, minutes);
     }, [isRunning, member.id, onExtendTimer, onStartTimer]);
 
+    // Закрытому участнику пометку уже не заводят — только читают,
+    // если она осталась.
+    const canEditNote = Boolean(onSaveNote) && member.status !== 'serviced';
+
     // Та же строка целиком — для всплывающей подсказки, когда её подрезало.
-    const metaText = [isOver ? 'Просрочено' : statusText, member.service_name, member.note]
+    const metaText = [member.note, isOver ? 'Просрочено' : statusText, member.service_name]
         .filter(Boolean).join(' · ');
 
     const cardClasses = [
@@ -118,37 +122,32 @@ function MemberCard({
                         строка: у подрезанной пометки не осталось бы цели
                         под палец. */}
                     <p
-                        className={`${styles.meta} ${member.note && onSaveNote ? styles.metaClickable : ''}`}
+                        className={`${styles.meta} ${canEditNote ? styles.metaClickable : ''}`}
                         title={metaText}
-                        onClick={member.note && onSaveNote ? openNote : undefined}
+                        onClick={canEditNote ? openNote : undefined}
                     >
+                        {/* Пометка идёт первой: строка подрезается с хвоста,
+                            а она здесь главное. Приглашение завести её —
+                            словом, а не значком: любая иконка тут читается
+                            как «написать клиенту», особенно когда в планах
+                            Telegram-бот. */}
+                        {member.note
+                            ? <span className={styles.metaNote}>{member.note}</span>
+                            : canEditNote && <span className={styles.metaAdd}>пометка</span>}
                         <span className={isOver ? styles.metaOverdue : undefined}>
+                            {(member.note || canEditNote) ? ' · ' : ''}
                             {isOver ? 'Просрочено' : statusText}
                         </span>
                         {member.service_name && (
                             <span className={styles.metaService}> · {member.service_name}</span>
                         )}
-                        {member.note && (
-                            <span className={styles.metaNote}> · {member.note}</span>
-                        )}
                     </p>
                 </div>
 
                 <div className={styles.marks}>
-                    {/* Значок пометки нужен, только пока её нет: дальше
-                        пометка редактируется прямо в строке под именем. */}
-                    {onSaveNote && !member.note && (
-                        <button
-                            type="button"
-                            className={styles.markButton}
-                            onClick={openNote}
-                            title="Добавить пометку"
-                        >
-                            <MessageSquare size={17} />
-                        </button>
-                    )}
-
-                    {(onStartTimer || onExtendTimer) && (
+                    {/* Закрытому время уже не задают: приём окончен, и
+                        таймер при этом гасится в базе (миграция 0008). */}
+                    {member.status !== 'serviced' && (onStartTimer || onExtendTimer) && (
                         left === null ? (
                             <button
                                 type="button"
