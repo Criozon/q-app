@@ -192,13 +192,13 @@ function AdminPage() {
         }
     }, []);
 
-    // Без setIsProcessing: пометку правят прямо в карточке, блокировать
+    // Без setIsProcessing: заметку правят прямо в карточке, блокировать
     // из-за неё остальные кнопки незачем.
     const saveNote = useCallback(async (memberId: string, note: string | null) => {
         try {
             await service.updateMemberNote(memberId, note);
         } catch {
-            toast.error('Не удалось сохранить пометку.');
+            toast.error('Не удалось сохранить заметку.');
         }
     }, []);
 
@@ -292,7 +292,7 @@ function AdminPage() {
     const handleRemoveMember = useCallback((member: AdminMember) => { setConfirmation({ isOpen: true, title: 'Удалить участника?', message: <p>Вы уверены, что хотите удалить <strong>{member.member_name} ({member.display_code})</strong> из очереди?</p>, confirmText: 'Да, удалить', isDestructive: true, onConfirm: async () => { await service.deleteMember(member.id); toast.success(`Участник ${member.member_name} удален.`);},});}, []);
     const handleDeleteCurrentQueue = useCallback(() => { if (!queue) return; setConfirmation({ isOpen: true, title: 'Удалить очередь?', message: <p>Вы уверены, что хотите удалить очередь <strong>"{queue.name}"</strong>? Это действие необратимо.</p>, confirmText: 'Да, удалить', isDestructive: true, onConfirm: () => { const toastId = toast.loading(`Удаляем очередь "${queue.name}"...`); service.deleteQueue(queue.id).then(({error}) => { if (error) toast.error(`Не удалось удалить очередь "${queue.name}".`, { id: toastId }); else { setMyQueues(prev => prev.filter(q => q.id !== queue.id)); toast.success(`Очередь "${queue.name}" удалена.`, { id: toastId }); navigate('/'); } }); } }); }, [queue, navigate, setMyQueues]);
     const handleShare = useCallback(async (shareData: ShareData & { key?: string }) => { if (navigator.share) { try { await navigator.share(shareData); } catch (err) { log(PAGE_SOURCE, 'Ошибка Web Share API:', err); } } else { navigator.clipboard.writeText(shareData.url ?? '').then(() => { setCopiedKey(shareData.key ?? null); setTimeout(() => setCopiedKey(null), 2000); }).catch(() => toast.error("Не удалось скопировать ссылку.")); } }, []);
-    const getStatusText = useCallback((member: AdminMember) => { switch (member.status) { case 'called': return isSimpleMode ? 'Вызывается' : `Вызывается в: ${member.window_name?.name || '...'}`; case 'acknowledged': return isSimpleMode ? 'Идет к окну' : `Идет в: ${member.window_name?.name || '...'}`; case 'in_service': return 'На руках'; case 'serviced': return 'Обслужен'; default: return 'Ожидает'; } }, [isSimpleMode]);
+    const getStatusText = useCallback((member: AdminMember) => { switch (member.status) { case 'called': return isSimpleMode ? 'Вызывается' : `Вызывается в: ${member.window_name?.name || '...'}`; case 'acknowledged': return isSimpleMode ? 'Идет к окну' : `Идет в: ${member.window_name?.name || '...'}`; case 'in_service': return 'Идёт обслуживание'; case 'serviced': return 'Обслужен'; default: return 'Ожидает'; } }, [isSimpleMode]);
     // Сверху то, что требует внимания: горящие таймеры, потом вызванные.
     const sortedMembers = useMemo(() => members.slice().sort(byWorkOrder), [members]);
 

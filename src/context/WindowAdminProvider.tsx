@@ -157,11 +157,11 @@ export function WindowAdminProvider({ children }: { children: ReactNode }) {
         finally { setIsProcessing(false); }
     }, []);
 
-    // Без setIsProcessing: пометку правят прямо в карточке, и блокировать
+    // Без setIsProcessing: заметку правят прямо в карточке, и блокировать
     // из-за неё остальные кнопки незачем.
     const saveNote = useCallback(async (memberId: string, note: string | null) => {
         try { await service.updateMemberNote(memberId, note); }
-        catch { toast.error('Не удалось сохранить пометку.'); }
+        catch { toast.error('Не удалось сохранить заметку.'); }
     }, []);
     const returnToQueue = useCallback(async (memberId: string) => { setIsProcessing(true); try { await service.returnMemberToWaiting(memberId); } catch { toast.error('Не удалось вернуть участника в очередь.'); } finally { setIsProcessing(false); } }, []);
     

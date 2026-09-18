@@ -54,7 +54,7 @@ export interface MyQueueStatus {
         ticket_number: number;
         status: MemberStatus;
         defer_count: number;
-        /** Пометка администратора: «Катамаран 3». Показывается участнику. */
+        /** Заметка администратора: «Катамаран 3». Показывается участнику. */
         note: string | null;
         /** Когда истекает выданное время. null — таймера нет. */
         timer_ends_at: string | null;
