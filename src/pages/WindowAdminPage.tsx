@@ -19,7 +19,7 @@ function WindowAdminPage() {
     const {
         windowInfo, queueInfo, members, assignedMember, loading, error, errorKind, isProcessing, loadInitialData,
         isJoinModalOpen, joinUrl, qrCodeUrl, setIsJoinModalOpen,
-        callNext, callSpecific, completeService, returnToQueue,
+        callNext, callSpecific, completeService, returnToQueue, cancelMember,
         startTimer, extendTimer, saveNote,
         isQueueDeleted
     } = useWindowAdmin();
@@ -78,6 +78,7 @@ function WindowAdminPage() {
         if (status === 'acknowledged') return '✅ Подтвердил, идет!';
         if (status === 'in_service') return 'Идёт обслуживание';
         if (status === 'serviced') return 'Обслужен';
+        if (status === 'cancelled') return 'Не подошёл';
         return 'Ожидает';
     }, []);
     
@@ -159,6 +160,7 @@ function WindowAdminPage() {
                                     dimmed={!!member.assigned_window_id && !isMine}
                                     onCall={callSpecific}
                                     onReturn={returnToQueue}
+                                    onCancel={cancelMember}
                                     onFinish={completeService}
                                     onRemove={() => handleRemoveMember(member)}
                                     onStartTimer={startTimer}

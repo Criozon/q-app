@@ -9,7 +9,7 @@ export type Service = Tables['services']['Row'];
 export type QueueWindow = Tables['windows']['Row'];
 export type Announcement = Tables['queue_announcements']['Row'];
 
-export type MemberStatus = 'waiting' | 'called' | 'acknowledged' | 'in_service' | 'serviced';
+export type MemberStatus = 'waiting' | 'called' | 'acknowledged' | 'in_service' | 'serviced' | 'cancelled';
 export type QueueStatus = 'active' | 'paused';
 
 /**

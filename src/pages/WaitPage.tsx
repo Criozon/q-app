@@ -557,6 +557,16 @@ function WaitPage() {
                 })()}
 
                 {myInfo?.status === 'serviced' && (<div className={`${styles.statusBox} ${styles.statusServiced}`}><h2>Ваше обслуживание завершено.</h2></div>)}
+
+                {/* Сессию при отмене не чистим намеренно: администратор
+                    может вернуть человека в очередь, и тогда эта же
+                    страница сама подхватит новый статус. */}
+                {myInfo?.status === 'cancelled' && (
+                    <div className={`${styles.statusBox} ${styles.statusServiced}`}>
+                        <h2>Обслуживание отменено</h2>
+                        <p>Подойдите к администратору — вас смогут вернуть в очередь по вашему коду.</p>
+                    </div>
+                )}
                 
                 {(myInfo?.status === 'waiting' || myInfo?.status === 'acknowledged') && (
                     <Button onClick={handleLeaveQueue} isLoading={isLeaving} className={styles.leaveButton}>
