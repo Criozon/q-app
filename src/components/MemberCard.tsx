@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
 import { Check, PhoneCall, Undo2, UserX, Timer, MessageSquare } from 'lucide-react';
 import Card from './Card';
+import Modal from './Modal';
+import Button from './Button';
 import DurationPicker from './DurationPicker';
 import { useTicker } from '../hooks/useTicker';
 import { msUntil, formatClockShort, formatDuration } from '../utils/clock';
@@ -16,8 +18,10 @@ import styles from './MemberCard.module.css';
  * катамаран, и позвать нужно того, кто дальше в списке. Поэтому вызвать,
  * вернуть, завершить и удалить можно у любого участника.
  *
- * Таймер и пометка тоже здесь, но спрятаны за значками: очереди без
- * выдачи они не нужны, а места на карточке немного.
+ * Таймер и пометка тоже здесь, но спрятаны за значками и отделены от
+ * кнопок управления: очереди без выдачи они не нужны, а места в строке
+ * немного. Открываются модальным окном, а не раскрытием карточки —
+ * иначе список прыгал бы под пальцем.
  */
 
 export interface CardMember {
@@ -56,27 +60,34 @@ function MemberCard({
     // Гонит обратный отсчёт. Значение не нужно — нужна перерисовка.
     useTicker(1000);
 
-    const [openPanel, setOpenPanel] = useState<'none' | 'timer' | 'note'>('none');
-    const [noteDraft, setNoteDraft] = useState<string | null>(null);
+    const [modal, setModal] = useState<'none' | 'timer' | 'note'>('none');
+    const [noteDraft, setNoteDraft] = useState('');
 
     const left = msUntil(member.timer_ends_at);
     const isOver = left !== null && left <= 0;
     const isRunning = member.status === 'in_service';
     const canReturn = member.status !== 'waiting' && member.status !== 'serviced';
 
+    const openNote = useCallback(() => {
+        setNoteDraft(member.note ?? '');
+        setModal('note');
+    }, [member.note]);
+
     const commitNote = useCallback(() => {
-        if (noteDraft === null) return;
         const cleaned = noteDraft.trim() || null;
-        setNoteDraft(null);
-        setOpenPanel('none');
+        setModal('none');
         if (cleaned !== (member.note ?? null)) onSaveNote?.(member.id, cleaned);
     }, [noteDraft, member.id, member.note, onSaveNote]);
 
     const handleTimer = useCallback((minutes: number) => {
-        setOpenPanel('none');
+        setModal('none');
         if (isRunning) onExtendTimer?.(member.id, minutes);
         else onStartTimer?.(member.id, minutes);
     }, [isRunning, member.id, onExtendTimer, onStartTimer]);
+
+    // Та же строка целиком — для всплывающей подсказки, когда её подрезало.
+    const metaText = [isOver ? 'Просрочено' : statusText, member.service_name, member.note]
+        .filter(Boolean).join(' · ');
 
     const cardClasses = [
         styles.card,
@@ -99,34 +110,27 @@ function MemberCard({
                     <p className={styles.name}>
                         {member.display_code || `#${member.ticket_number}`} — {member.member_name}
                     </p>
-                    {/* Порядок здесь — это порядок важности: строка узкая и
-                        подрезается с хвоста. Просрочка важнее всего, за ней
-                        пометка (какую лодку выдали), и только потом статус.
-                        У идущего таймера «На руках» вовсе лишнее: об этом
-                        говорят и отсчёт, и цвет полосы. */}
-                    <p className={styles.meta}>
-                        {/* О просрочке и так говорят розовая карточка,
-                            красная полоса и значок с минусом. Слово пишем,
-                            только когда пометки нет и строка всё равно
-                            пустует — иначе оно вытесняет то, ради чего
-                            пометку и заводили. */}
-                        {isOver && !member.note && (
-                            <span className={styles.metaOverdue}>Просрочено</span>
+                    {/* Пометка стоит в одной строке со сведениями, а не
+                        отдельным блоком. Строка не переносится: не влезло —
+                        подрезается многоточием, полностью видно во всплывающей
+                        подсказке, а на телефоне — по нажатию, которое открывает
+                        ту же пометку на правку. Поэтому кликабельна вся
+                        строка: у подрезанной пометки не осталось бы цели
+                        под палец. */}
+                    <p
+                        className={`${styles.meta} ${member.note && onSaveNote ? styles.metaClickable : ''}`}
+                        title={metaText}
+                        onClick={member.note && onSaveNote ? openNote : undefined}
+                    >
+                        <span className={isOver ? styles.metaOverdue : undefined}>
+                            {isOver ? 'Просрочено' : statusText}
+                        </span>
+                        {member.service_name && (
+                            <span className={styles.metaService}> · {member.service_name}</span>
                         )}
-                        {member.note && onSaveNote && (
-                            <button
-                                type="button"
-                                className={styles.metaNote}
-                                onClick={() => { setNoteDraft(member.note ?? ''); setOpenPanel('note'); }}
-                                title="Изменить пометку"
-                            >
-                                {member.note}
-                            </button>
+                        {member.note && (
+                            <span className={styles.metaNote}> · {member.note}</span>
                         )}
-                        {!(isRunning && (member.note || isOver)) && (
-                            <span>{member.note ? ' · ' : ''}{statusText}</span>
-                        )}
-                        {member.service_name && <span className={styles.metaService}> · {member.service_name}</span>}
                     </p>
                 </div>
 
@@ -137,7 +141,7 @@ function MemberCard({
                         <button
                             type="button"
                             className={styles.markButton}
-                            onClick={() => { setNoteDraft(''); setOpenPanel('note'); }}
+                            onClick={openNote}
                             title="Добавить пометку"
                         >
                             <MessageSquare size={17} />
@@ -149,7 +153,7 @@ function MemberCard({
                             <button
                                 type="button"
                                 className={styles.markButton}
-                                onClick={() => setOpenPanel(openPanel === 'timer' ? 'none' : 'timer')}
+                                onClick={() => setModal('timer')}
                                 title="Задать время"
                             >
                                 <Timer size={17} />
@@ -158,7 +162,7 @@ function MemberCard({
                             <button
                                 type="button"
                                 className={`${styles.timerChip} ${isOver ? styles.timerChipOver : ''}`}
-                                onClick={() => setOpenPanel(openPanel === 'timer' ? 'none' : 'timer')}
+                                onClick={() => setModal('timer')}
                                 title="Добавить время"
                             >
                                 {isOver ? `−${formatDuration(left)}` : formatClockShort(left)}
@@ -218,28 +222,34 @@ function MemberCard({
                 </div>
             </div>
 
-            {/* Раскрывающиеся панели — под строкой, только когда открыты. */}
-            {openPanel === 'note' && (
-                <input
-                    className={styles.noteInput}
-                    value={noteDraft ?? ''}
-                    onChange={event => setNoteDraft(event.target.value)}
-                    onBlur={commitNote}
-                    onKeyDown={event => { if (event.key === 'Enter') commitNote(); }}
-                    placeholder="Катамаран 3, кабина 2…"
-                    maxLength={60}
-                    autoFocus
-                />
-            )}
+            {/* Не раскрываем карточку, а показываем окно: иначе список
+                разъезжается под пальцем и соседние строки уезжают. */}
+            <Modal isOpen={modal === 'note'} onClose={() => setModal('none')} title="Пометка">
+                <div className={styles.noteModal}>
+                    <input
+                        className={styles.noteInput}
+                        value={noteDraft}
+                        onChange={event => setNoteDraft(event.target.value)}
+                        onKeyDown={event => { if (event.key === 'Enter') commitNote(); }}
+                        placeholder="Катамаран 3, кабина 2…"
+                        maxLength={60}
+                        autoFocus
+                    />
+                    <Button onClick={commitNote} className={styles.noteSave}>Сохранить</Button>
+                </div>
+            </Modal>
 
-            {openPanel === 'timer' && (
+            <Modal
+                isOpen={modal === 'timer'}
+                onClose={() => setModal('none')}
+                title={isRunning ? 'Добавить время' : 'Сколько времени'}
+            >
                 <DurationPicker
                     confirmLabel={isRunning ? 'Добавить' : 'Запустить'}
                     onConfirm={handleTimer}
-                    onCancel={() => setOpenPanel('none')}
                     isProcessing={isProcessing}
                 />
-            )}
+            </Modal>
         </Card>
     );
 }

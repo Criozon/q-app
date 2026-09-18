@@ -54,13 +54,13 @@
 }
 
 .metaNote {
-  font-family: inherit;
-  font-size: inherit;
   font-weight: 600;
   color: var(--text-primary);
-  background: none;
-  border: none;
-  padding: 0;
+}
+
+/* Строка целиком открывает пометку на правку: у подрезанной пометки
+   не осталось бы цели под палец. */
+.metaClickable {
   cursor: pointer;
 }
 
@@ -150,6 +150,17 @@
   border-color: var(--accent-red);
 }
 
+.noteModal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.noteSave {
+  background-color: var(--accent-blue);
+  width: 100%;
+}
+
 .noteInput {
   font-family: inherit;
   /* Меньше 16px — и Safari на iPhone зумит страницу при фокусе. */
@@ -167,117 +178,15 @@
   outline: none;
 }
 
-/* --- Набор длительности -------------------------------------------------- */
-
-.picker {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border-radius: 12px;
-  background-color: var(--background);
-}
-
-.pickerValueRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.pickerValue,
-.pickerInput {
-  font-family: inherit;
-  font-size: 22px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-primary);
-  background: none;
-  border: none;
-  padding: 4px 0;
-  flex-grow: 1;
-  text-align: left;
-  cursor: pointer;
-}
-
-.pickerInput {
-  cursor: text;
-  border-bottom: 2px solid var(--accent-blue);
-  width: 100%;
-}
-
-.pickerInput:focus {
-  outline: none;
-}
-
-.pickerReset {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  border: 1px solid var(--border-color);
-  background: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.pickerReset:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-.pickerSteps {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.pickerStep {
-  font-family: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--accent-blue);
-  background-color: var(--card-background);
-  border: 1px solid var(--accent-blue);
-  border-radius: 10px;
-  padding: 0 14px;
-  /* Палец, а не курсор. */
-  min-height: 44px;
-  flex-grow: 1;
-  cursor: pointer;
-  transition: background-color 0.15s, color 0.15s;
-}
-
-.pickerStep:active {
-  background-color: var(--accent-blue);
-  color: #fff;
-}
-
-.pickerActions {
-  display: flex;
-  gap: 8px;
-}
-
-.pickerCancel {
-  background-color: #8e8e93 !important;
-  flex-shrink: 0;
-  width: auto !important;
-  padding: 0 16px !important;
-}
-
-.pickerConfirm {
-  background-color: var(--accent-blue);
-  flex-grow: 1;
-}
-
 /* --- Действия ------------------------------------------------------------ */
 
 .actions {
   display: flex;
   gap: 4px;
   flex-shrink: 0;
+  /* Отметки — про содержание выдачи, кнопки — про ход очереди.
+     Разные вещи, поэтому между ними зазор шире внутренних. */
+  margin-left: 8px;
 }
 
 .action {
