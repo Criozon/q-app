@@ -322,6 +322,19 @@ export const updateMemberNote = (memberId: string, note: string | null) =>
         .update({ note: note?.trim() || null })
         .eq('id', memberId));
 
+/**
+ * Отмена обслуживания: вызвали, а человек не подошёл.
+ *
+ * Не «Закончить»: тот ставит serviced_at, и несостоявшийся приём уходит
+ * в среднюю длительность, которую видят люди на экране входа. И не
+ * «Удалить»: отменённого можно вернуть, если он объявится.
+ */
+export const cancelMember = (memberId: string) =>
+    withSession('cancelMember', () => supabase
+        .from('queue_members')
+        .update({ status: 'cancelled', assigned_window_id: null })
+        .eq('id', memberId));
+
 export const returnMemberToWaiting = (memberId: string) =>
     withSession('returnMemberToWaiting', () => supabase
         .from('queue_members')

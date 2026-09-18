@@ -172,6 +172,63 @@ describe('Q-App: доступ к данным', () => {
         }
     });
 
+    test('отменённый не портит среднее время приёма', async () => {
+        // Раньше неподошедшего закрывали через «Закончить», и он уходил
+        // в measured_service_minutes выдуманным сеансом: вызвали в 14:00,
+        // махнули рукой в 14:05 — в среднее ушли пять минут приёма,
+        // которых не было. Эту же цифру видят люди на экране входа.
+        const own = await api('/rest/v1/rpc/create_queue_with_services_and_windows', {
+            method: 'POST', token: organizer,
+            body: { p_name: `Отмена ${Date.now()}`, p_description: '', p_window_count: 1, p_services: [] } });
+        const ownId = own.data[0].id;
+        try {
+            const q = await api(`/rest/v1/queues?id=eq.${ownId}&select=short_id`, { token: organizer });
+            const short = q.data[0].short_id;
+
+            // Один честный приём на четыре минуты.
+            const честный = await api('/rest/v1/rpc/join_queue', { method: 'POST', token: organizer,
+                body: { p_short_id: short, p_member_name: 'Обслужен', p_service_id: null } });
+            await api(`/rest/v1/queue_members?id=eq.${честный.data.id}`, {
+                method: 'PATCH', token: organizer,
+                body: { status: 'called', called_at: new Date(Date.now() - 4 * 60000).toISOString() } });
+            await api(`/rest/v1/queue_members?id=eq.${честный.data.id}`, {
+                method: 'PATCH', token: organizer, body: { status: 'serviced' } });
+
+            // И один, которого вызвали полчаса назад и не дождались.
+            const неподошёл = await api('/rest/v1/rpc/join_queue', { method: 'POST', token: organizer,
+                body: { p_short_id: short, p_member_name: 'Не подошёл', p_service_id: null } });
+            await api(`/rest/v1/queue_members?id=eq.${неподошёл.data.id}`, {
+                method: 'PATCH', token: organizer,
+                body: { status: 'called', called_at: new Date(Date.now() - 30 * 60000).toISOString() } });
+            await api(`/rest/v1/queue_members?id=eq.${неподошёл.data.id}`, {
+                method: 'PATCH', token: organizer, body: { status: 'cancelled' } });
+
+            const отменённый = await api(
+                `/rest/v1/queue_members?id=eq.${неподошёл.data.id}&select=status,serviced_at`,
+                { token: organizer });
+            assert.equal(отменённый.data[0].status, 'cancelled');
+            assert.equal(отменённый.data[0].serviced_at, null,
+                'отмена не должна ставить время окончания — на этом держится статистика');
+
+            const вход = await api('/rest/v1/rpc/get_queue_for_join', {
+                method: 'POST', body: { p_short_id: short } });
+            assert.equal(вход.data.avg_service_minutes, 4,
+                `в среднее просочился несостоявшийся приём: ${вход.data.avg_service_minutes}`);
+
+            // И вернуть отменённого можно так же, как закончённого.
+            await api(`/rest/v1/queue_members?id=eq.${неподошёл.data.id}`, {
+                method: 'PATCH', token: organizer,
+                body: { status: 'waiting', assigned_window_id: null, acknowledged_at: null } });
+            const вернулся = await api(
+                `/rest/v1/queue_members?id=eq.${неподошёл.data.id}&select=status,called_at`,
+                { token: organizer });
+            assert.equal(вернулся.data[0].status, 'waiting');
+            assert.equal(вернулся.data[0].called_at, null, 'следы прошлого захода должны стереться');
+        } finally {
+            await api(`/rest/v1/queues?id=eq.${ownId}`, { method: 'DELETE', token: organizer });
+        }
+    });
+
     test('негодный токен даёт именно PGRST301', async () => {
         // На этот код опирается повтор запроса со свежей сессией
         // (supabaseService.isAuthFailure). Если Supabase сменит код,

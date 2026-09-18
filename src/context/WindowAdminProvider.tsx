@@ -169,13 +169,16 @@ export function WindowAdminProvider({ children }: { children: ReactNode }) {
         try { await service.updateMemberNote(memberId, note); }
         catch (err) { log(PAGE_SOURCE, 'Не удалось сохранить заметку.', err); toast.error(`Не удалось сохранить заметку. ${errorMessage(err, '')}`.trim()); }
     }, []);
+    // Отмена: вызвали, а человек не подошёл. Не «Закончить» — тот подмешал
+    // бы несостоявшийся приём в среднюю длительность.
+    const cancelMember = useCallback(async (memberId: string) => { setIsProcessing(true); try { await service.cancelMember(memberId); } catch (err) { log(PAGE_SOURCE, "Не удалось отменить обслуживание.", err); toast.error(`Не удалось отменить обслуживание. ${errorMessage(err, '')}`.trim()); } finally { setIsProcessing(false); } }, []);
     const returnToQueue = useCallback(async (memberId: string) => { setIsProcessing(true); try { await service.returnMemberToWaiting(memberId); } catch (err) { log(PAGE_SOURCE, 'Не удалось вернуть участника в очередь.', err); toast.error(`Не удалось вернуть участника в очередь. ${errorMessage(err, '')}`.trim()); } finally { setIsProcessing(false); } }, []);
     
     const assignedMember = useMemo(() => members.find(m => m.assigned_window_id === windowInfo?.id && (m.status === 'called' || m.status === 'acknowledged')), [members, windowInfo]);
     
     const value = useMemo(() => ({ 
-        windowInfo, queueInfo, members, assignedMember, loading, error, errorKind, isProcessing, isJoinModalOpen, joinUrl, qrCodeUrl, isQueueDeleted, setIsJoinModalOpen, loadInitialData, callNext, callSpecific, completeService, returnToQueue, startTimer, extendTimer, saveNote 
-    }), [windowInfo, queueInfo, members, assignedMember, loading, error, errorKind, isProcessing, isJoinModalOpen, joinUrl, qrCodeUrl, isQueueDeleted, loadInitialData, callNext, callSpecific, completeService, returnToQueue, startTimer, extendTimer, saveNote]);
+        windowInfo, queueInfo, members, assignedMember, loading, error, errorKind, isProcessing, isJoinModalOpen, joinUrl, qrCodeUrl, isQueueDeleted, setIsJoinModalOpen, loadInitialData, callNext, callSpecific, completeService, returnToQueue, cancelMember, startTimer, extendTimer, saveNote 
+    }), [windowInfo, queueInfo, members, assignedMember, loading, error, errorKind, isProcessing, isJoinModalOpen, joinUrl, qrCodeUrl, isQueueDeleted, loadInitialData, callNext, callSpecific, completeService, returnToQueue, cancelMember, startTimer, extendTimer, saveNote]);
     
     return (<WindowAdminContext.Provider value={value}>{children}</WindowAdminContext.Provider>);
 }

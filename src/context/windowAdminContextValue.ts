@@ -22,6 +22,7 @@ export interface WindowAdminContextValue {
     callSpecific: (memberId: string) => Promise<void>;
     completeService: (memberId: string) => Promise<void>;
     returnToQueue: (memberId: string) => Promise<void>;
+    cancelMember: (memberId: string) => Promise<void>;
     /** Запустить время участнику. Заметку не трогает, минуты считает сервер. */
     startTimer: (memberId: string, minutes: number) => Promise<void>;
     /** Добавить времени тому, у кого оно уже идёт. */

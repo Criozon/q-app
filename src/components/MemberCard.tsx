@@ -46,6 +46,7 @@ interface Props {
     dimmed?: boolean;
     onCall?: (memberId: string) => void;
     onReturn?: (memberId: string) => void;
+    onCancel?: (memberId: string) => void;
     onFinish?: (memberId: string) => void;
     onRemove?: (memberId: string) => void;
     onStartTimer?: (memberId: string, minutes: number) => void;
@@ -55,7 +56,7 @@ interface Props {
 
 function MemberCard({
     member, statusText, isProcessing, highlighted, dimmed,
-    onCall, onReturn, onFinish, onRemove, onStartTimer, onExtendTimer, onSaveNote,
+    onCall, onReturn, onCancel, onFinish, onRemove, onStartTimer, onExtendTimer, onSaveNote,
 }: Props) {
     // Гонит обратный отсчёт. Значение не нужно — нужна перерисовка.
     useTicker(1000);
@@ -112,6 +113,8 @@ function MemberCard({
     // Приоритет получается сам собой: внутри ожидающих порядок по номеру
     // талона, а у опоздавшего он меньше, чем у всех, кто записался после.
     const canReturn = member.status !== 'waiting';
+    // Отменять нечего у того, кто уже отменён или закончен.
+    const canCancel = member.status !== 'cancelled' && member.status !== 'serviced';
 
     const openNote = useCallback(() => {
         setNoteDraft(member.note ?? '');
@@ -145,7 +148,7 @@ function MemberCard({
         highlighted && member.status === 'acknowledged' && styles.acknowledged,
         isRunning && styles.inService,
         isRunning && isOver && styles.overdue,
-        member.status === 'serviced' && styles.serviced,
+        (member.status === 'serviced' || member.status === 'cancelled') && styles.serviced,
         dimmed && styles.dimmed,
     ].filter(Boolean).join(' ');
 
@@ -236,7 +239,11 @@ function MemberCard({
                         </button>
                     )}
 
-                    {member.status !== 'waiting' && member.status !== 'serviced' && onFinish && (
+                    {/* У отменённого «Закончить» бессмысленна — его не
+                        обслуживают, его возвращают. Пункт возврата уже
+                        в меню, и он же единственное осмысленное действие. */}
+                    {member.status !== 'waiting' && member.status !== 'serviced'
+                        && member.status !== 'cancelled' && onFinish && (
                         <button
                             type="button"
                             className={`${styles.primary} ${styles.finishPrimary}`}
@@ -247,7 +254,7 @@ function MemberCard({
                         </button>
                     )}
 
-                    {(canEditNote || onReturn || onRemove) && (
+                    {(canEditNote || onReturn || onCancel || onRemove) && (
                         <div className={styles.menuAnchor} ref={menuRef}>
                             <button
                                 type="button"
@@ -284,6 +291,16 @@ function MemberCard({
                                             onClick={runFromMenu(() => onReturn(member.id))}
                                         >
                                             Вернуть в очередь
+                                        </button>
+                                    )}
+                                    {canCancel && onCancel && (
+                                        <button
+                                            type="button"
+                                            className={styles.menuItem}
+                                            role="menuitem"
+                                            onClick={runFromMenu(() => onCancel(member.id))}
+                                        >
+                                            Отменить — не подошёл
                                         </button>
                                     )}
                                     {onRemove && (
