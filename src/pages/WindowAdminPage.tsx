@@ -76,7 +76,7 @@ function WindowAdminPage() {
     const getStatusText = useCallback((status: MemberStatus) => {
         if (status === 'called') return 'Вызывается...';
         if (status === 'acknowledged') return '✅ Подтвердил, идет!';
-        if (status === 'in_service') return 'На руках';
+        if (status === 'in_service') return 'Идёт обслуживание';
         if (status === 'serviced') return 'Обслужен';
         return 'Ожидает';
     }, []);

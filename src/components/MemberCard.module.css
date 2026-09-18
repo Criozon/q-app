@@ -34,7 +34,7 @@
   text-overflow: ellipsis;
 }
 
-/* Состояние, услуга и пометка — одной строкой под именем. */
+/* Состояние, услуга и заметка — одной строкой под именем. */
 .meta {
   font-size: 13px;
   color: var(--text-secondary);
@@ -58,16 +58,8 @@
   color: var(--text-primary);
 }
 
-/* Приглашение завести пометку — словом, а не значком: любая иконка
-   в этом ряду читается как «написать клиенту». Пунктир подсказывает,
-   что сюда можно нажать. */
-.metaAdd {
-  color: var(--accent-blue);
-  border-bottom: 1px dashed currentColor;
-}
-
-/* Строка целиком открывает пометку на правку: у подрезанной пометки
-   не осталось бы цели под палец. */
+/* Строка целиком открывает заметку на правку: у подрезанной заметки
+   не осталось бы цели под палец. Завести первую предлагает меню. */
 .metaClickable {
   cursor: pointer;
 }
@@ -108,7 +100,7 @@
   background-color: #f0f2f5;
 }
 
-/* --- Пометка и таймер --------------------------------------------------- */
+/* --- Заметка и таймер --------------------------------------------------- */
 
 .marks {
   display: flex;
@@ -190,6 +182,7 @@
 
 .actions {
   display: flex;
+  align-items: center;
   gap: 4px;
   flex-shrink: 0;
   /* Отметки — про содержание выдачи, кнопки — про ход очереди.
@@ -197,38 +190,106 @@
   margin-left: 8px;
 }
 
-.action {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* Тесно, но осознанно: имя участника важнее лишних пикселей у кнопок,
-     а промахнуться мимо 34 px пальцем трудно. */
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  border: none;
+/* Главное действие подписано словом: значок читался неоднозначно —
+   зелёная галочка и красный человечек выглядели как две стороны
+   одного «закончить». */
+.primary {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
   color: #fff;
+  border: none;
+  border-radius: 9px;
+  height: 34px;
+  padding: 0 12px;
+  white-space: nowrap;
   cursor: pointer;
   transition: opacity 0.2s;
 }
 
-.action:disabled {
+.primary:disabled {
   opacity: 0.45;
   cursor: default;
 }
 
-.returnAction {
-  background-color: #8e8e93;
-}
-
-.callAction {
+.callPrimary {
   background-color: var(--accent-blue);
 }
 
-.finishAction {
+.finishPrimary {
   background-color: var(--accent-green);
 }
 
-.removeAction {
-  background-color: var(--accent-red);
+/* --- Меню второстепенных действий ---------------------------------------- */
+
+.menuAnchor {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.menuButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 34px;
+  border: none;
+  border-radius: 9px;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.menuButton:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.menuButton:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Выпадает поверх списка, а не раздвигает карточку: иначе соседние
+   строки уезжают из-под взгляда ровно в момент выбора. */
+.menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  min-width: 190px;
+  padding: 6px;
+  border-radius: 12px;
+  background-color: var(--card-background);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  display: flex;
+  flex-direction: column;
+}
+
+.menuUp {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+.menuItem {
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--text-primary);
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 0 12px;
+  /* Палец, а не курсор. */
+  min-height: 44px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.menuItem:hover {
+  background-color: var(--background);
+}
+
+.menuItemDanger {
+  color: var(--accent-red);
 }

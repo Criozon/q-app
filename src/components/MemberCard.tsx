@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { Check, PhoneCall, Undo2, UserX, Timer } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Timer, MoreVertical } from 'lucide-react';
 import Card from './Card';
 import Modal from './Modal';
 import Button from './Button';
@@ -18,7 +18,7 @@ import styles from './MemberCard.module.css';
  * катамаран, и позвать нужно того, кто дальше в списке. Поэтому вызвать,
  * вернуть, завершить и удалить можно у любого участника.
  *
- * Таймер и пометка тоже здесь, но спрятаны за значками и отделены от
+ * Таймер и заметка тоже здесь, но спрятаны за значками и отделены от
  * кнопок управления: очереди без выдачи они не нужны, а места в строке
  * немного. Открываются модальным окном, а не раскрытием карточки —
  * иначе список прыгал бы под пальцем.
@@ -63,6 +63,44 @@ function MemberCard({
     const [modal, setModal] = useState<'none' | 'timer' | 'note'>('none');
     const [noteDraft, setNoteDraft] = useState('');
 
+    /**
+     * Меню второстепенных действий. Возврат в очередь и удаление нужны
+     * редко, а рядом с «Закончить» только путали: красная кнопка с
+     * человечком читалась как «закончить обслуживание».
+     */
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    /** Раскрывать вверх, если карточка у нижнего края — иначе меню обрежет. */
+    const [menuUp, setMenuUp] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!isMenuOpen) return;
+        const closeOnOutside = (event: PointerEvent) => {
+            if (!menuRef.current?.contains(event.target as Node)) setIsMenuOpen(false);
+        };
+        const closeOnEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setIsMenuOpen(false);
+        };
+        document.addEventListener('pointerdown', closeOnOutside);
+        document.addEventListener('keydown', closeOnEscape);
+        return () => {
+            document.removeEventListener('pointerdown', closeOnOutside);
+            document.removeEventListener('keydown', closeOnEscape);
+        };
+    }, [isMenuOpen]);
+
+    const toggleMenu = useCallback(() => {
+        const box = menuRef.current?.getBoundingClientRect();
+        // 160 px — примерная высота меню вместе с отступами.
+        if (box) setMenuUp(window.innerHeight - box.bottom < 160);
+        setIsMenuOpen(open => !open);
+    }, []);
+
+    const runFromMenu = useCallback((action: () => void) => () => {
+        setIsMenuOpen(false);
+        action();
+    }, []);
+
     const left = msUntil(member.timer_ends_at);
     const isOver = left !== null && left <= 0;
     const isRunning = member.status === 'in_service';
@@ -85,7 +123,7 @@ function MemberCard({
         else onStartTimer?.(member.id, minutes);
     }, [isRunning, member.id, onExtendTimer, onStartTimer]);
 
-    // Закрытому участнику пометку уже не заводят — только читают,
+    // Закрытому участнику заметку уже не заводят — только читают,
     // если она осталась.
     const canEditNote = Boolean(onSaveNote) && member.status !== 'serviced';
 
@@ -107,35 +145,32 @@ function MemberCard({
     return (
         <Card id={`member-${member.id}`} className={cardClasses}>
             {/* Одна строка: слева сведения, справа отметки и действия.
-                Пометка и состояние живут в строке под именем — так они не
+                Заметка и состояние живут в строке под именем — так они не
                 отъедают ширину у кнопок и не делают карточку выше. */}
             <div className={styles.row}>
                 <div className={styles.info}>
                     <p className={styles.name}>
                         {member.display_code || `#${member.ticket_number}`} — {member.member_name}
                     </p>
-                    {/* Пометка стоит в одной строке со сведениями, а не
+                    {/* Заметка стоит в одной строке со сведениями, а не
                         отдельным блоком. Строка не переносится: не влезло —
                         подрезается многоточием, полностью видно во всплывающей
                         подсказке, а на телефоне — по нажатию, которое открывает
-                        ту же пометку на правку. Поэтому кликабельна вся
-                        строка: у подрезанной пометки не осталось бы цели
+                        ту же заметку на правку. Поэтому кликабельна вся
+                        строка: у подрезанной заметки не осталось бы цели
                         под палец. */}
                     <p
-                        className={`${styles.meta} ${canEditNote ? styles.metaClickable : ''}`}
+                        className={`${styles.meta} ${member.note && canEditNote ? styles.metaClickable : ''}`}
                         title={metaText}
-                        onClick={canEditNote ? openNote : undefined}
+                        onClick={member.note && canEditNote ? openNote : undefined}
                     >
-                        {/* Пометка идёт первой: строка подрезается с хвоста,
-                            а она здесь главное. Приглашение завести её —
-                            словом, а не значком: любая иконка тут читается
-                            как «написать клиенту», особенно когда в планах
-                            Telegram-бот. */}
-                        {member.note
-                            ? <span className={styles.metaNote}>{member.note}</span>
-                            : canEditNote && <span className={styles.metaAdd}>пометка</span>}
+                        {/* Заметка идёт первой: строка подрезается с хвоста,
+                            а она здесь главное. Завести её предлагает меню —
+                            подпись «Сделать заметку» в строку не влезала
+                            и вытесняла состояние. */}
+                        {member.note && <span className={styles.metaNote}>{member.note}</span>}
                         <span className={isOver ? styles.metaOverdue : undefined}>
-                            {(member.note || canEditNote) ? ' · ' : ''}
+                            {member.note ? ' · ' : ''}
                             {isOver ? 'Просрочено' : statusText}
                         </span>
                         {member.service_name && (
@@ -171,59 +206,90 @@ function MemberCard({
                 </div>
 
                 <div className={styles.actions}>
-                    {canReturn && onReturn && (
-                        <button
-                            type="button"
-                            className={`${styles.action} ${styles.returnAction}`}
-                            onClick={() => onReturn(member.id)}
-                            disabled={isProcessing}
-                            title="Вернуть в очередь"
-                        >
-                            <Undo2 size={17} />
-                        </button>
-                    )}
-
+                    {/* Главное действие — подписью, а не значком. Зелёная
+                        галочка и красный человечек рядом читались как две
+                        стороны одного «закончить». */}
                     {member.status === 'waiting' && onCall && (
                         <button
                             type="button"
-                            className={`${styles.action} ${styles.callAction}`}
+                            className={`${styles.primary} ${styles.callPrimary}`}
                             onClick={() => onCall(member.id)}
                             disabled={isProcessing}
-                            title="Вызвать"
                         >
-                            <PhoneCall size={17} />
+                            Вызвать
                         </button>
                     )}
 
                     {member.status !== 'waiting' && member.status !== 'serviced' && onFinish && (
                         <button
                             type="button"
-                            className={`${styles.action} ${styles.finishAction}`}
+                            className={`${styles.primary} ${styles.finishPrimary}`}
                             onClick={() => onFinish(member.id)}
                             disabled={isProcessing}
-                            title="Завершить"
                         >
-                            <Check size={17} />
+                            Закончить
                         </button>
                     )}
 
-                    {onRemove && (
-                        <button
-                            type="button"
-                            className={`${styles.action} ${styles.removeAction}`}
-                            onClick={() => onRemove(member.id)}
-                            disabled={isProcessing}
-                            title="Удалить участника"
-                        >
-                            <UserX size={17} />
-                        </button>
+                    {(canEditNote || onReturn || onRemove) && (
+                        <div className={styles.menuAnchor} ref={menuRef}>
+                            <button
+                                type="button"
+                                className={styles.menuButton}
+                                onClick={toggleMenu}
+                                disabled={isProcessing}
+                                aria-haspopup="menu"
+                                aria-expanded={isMenuOpen}
+                                title="Ещё"
+                            >
+                                <MoreVertical size={18} />
+                            </button>
+
+                            {isMenuOpen && (
+                                <div
+                                    className={`${styles.menu} ${menuUp ? styles.menuUp : ''}`}
+                                    role="menu"
+                                >
+                                    {canEditNote && (
+                                        <button
+                                            type="button"
+                                            className={styles.menuItem}
+                                            role="menuitem"
+                                            onClick={runFromMenu(openNote)}
+                                        >
+                                            {member.note ? 'Изменить заметку' : 'Сделать заметку'}
+                                        </button>
+                                    )}
+                                    {canReturn && onReturn && (
+                                        <button
+                                            type="button"
+                                            className={styles.menuItem}
+                                            role="menuitem"
+                                            onClick={runFromMenu(() => onReturn(member.id))}
+                                        >
+                                            Вернуть в очередь
+                                        </button>
+                                    )}
+                                    {onRemove && (
+                                        <button
+                                            type="button"
+                                            className={`${styles.menuItem} ${styles.menuItemDanger}`}
+                                            role="menuitem"
+                                            onClick={runFromMenu(() => onRemove(member.id))}
+                                        >
+                                            Удалить из очереди
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>
 
             {/* Не раскрываем карточку, а показываем окно: иначе список
                 разъезжается под пальцем и соседние строки уезжают. */}
-            <Modal isOpen={modal === 'note'} onClose={() => setModal('none')} title="Пометка">
+            <Modal isOpen={modal === 'note'} onClose={() => setModal('none')} title="Заметка">
                 <div className={styles.noteModal}>
                     <input
                         className={styles.noteInput}
