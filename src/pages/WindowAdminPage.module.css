@@ -153,8 +153,9 @@
 
 .callNextButton,
 
+/* Тот же светофорный зелёный, что и на карточках. */
 .callNextButton {
-  background-color: var(--accent-blue);
+  background-color: var(--accent-green);
 }
 
 .modalContent {

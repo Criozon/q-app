@@ -60,6 +60,74 @@ describe('Q-App: доступ к данным', () => {
         if (queueId) await api(`/rest/v1/queues?id=eq.${queueId}`, { method: 'DELETE', token: organizer });
     });
 
+    test('экран входа показывает очередь и только измеренное время', async () => {
+        // Своя очередь: этот тест заводит участника, а общая очередь
+        // набора нужна соседним проверкам с предсказуемой нумерацией.
+        //
+        // Сколько людей впереди и сколько длится приём — это решает,
+        // вставать сейчас или зайти позже. Среднее показываем, только
+        // когда его есть из чего считать: подставное число (4 минуты
+        // в прогнозе) на экране входа выглядело бы как измеренное.
+        const own = await api('/rest/v1/rpc/create_queue_with_services_and_windows', {
+            method: 'POST', token: organizer,
+            body: { p_name: `Вход ${Date.now()}`, p_description: '', p_window_count: 1, p_services: [] } });
+        const ownId = own.data[0].id;
+        try {
+            const q = await api(`/rest/v1/queues?id=eq.${ownId}&select=short_id`, { token: organizer });
+            const ownShort = q.data[0].short_id;
+
+            const fresh = await api('/rest/v1/rpc/get_queue_for_join', {
+                method: 'POST', body: { p_short_id: ownShort } });
+            assert.equal(fresh.data.waiting_count, 0);
+            assert.equal(fresh.data.avg_service_minutes, null,
+                'пока никого не обслужили, среднего времени быть не должно');
+
+            const me = await api('/rest/v1/rpc/join_queue', { method: 'POST', token: organizer,
+                body: { p_short_id: ownShort, p_member_name: 'Считаемый', p_service_id: null } });
+
+            const waiting = await api('/rest/v1/rpc/get_queue_for_join', {
+                method: 'POST', body: { p_short_id: ownShort } });
+            assert.equal(waiting.data.waiting_count, 1, 'вошедший должен попасть в счётчик');
+
+            // Приём как будто длился восемь минут.
+            await api(`/rest/v1/queue_members?id=eq.${me.data.id}`, {
+                method: 'PATCH', token: organizer,
+                body: { status: 'called', called_at: new Date(Date.now() - 8 * 60000).toISOString() } });
+            await api(`/rest/v1/queue_members?id=eq.${me.data.id}`, {
+                method: 'PATCH', token: organizer, body: { status: 'serviced' } });
+
+            const after = await api('/rest/v1/rpc/get_queue_for_join', {
+                method: 'POST', body: { p_short_id: ownShort } });
+            assert.equal(after.data.avg_service_minutes, 8,
+                `ожидали 8 минут, получили ${after.data.avg_service_minutes}`);
+            assert.equal(after.data.waiting_count, 0, 'обслуженный из ожидающих выбывает');
+        } finally {
+            await api(`/rest/v1/queues?id=eq.${ownId}`, { method: 'DELETE', token: organizer });
+        }
+    });
+
+    test('прогноз ожидания сохраняет подстановку, когда мерить нечего', async () => {
+        // avg_service_minutes остаётся прогнозной обёрткой с 4 минутами:
+        // без неё первым участникам нечего показать. Проверяем, что
+        // разделение measured/avg не сломало страницу ожидания.
+        const token = await signIn();
+        const fresh = await api('/rest/v1/rpc/create_queue_with_services_and_windows', {
+            method: 'POST', token,
+            body: { p_name: `Пустая ${Date.now()}`, p_description: '', p_window_count: 1, p_services: [] } });
+        const freshId = fresh.data[0].id;
+        try {
+            const q = await api(`/rest/v1/queues?id=eq.${freshId}&select=short_id`, { token });
+            const member = await api('/rest/v1/rpc/join_queue', { method: 'POST', token,
+                body: { p_short_id: q.data[0].short_id, p_member_name: 'Первый', p_service_id: null } });
+            const status = await api('/rest/v1/rpc/get_my_queue_status', {
+                method: 'POST', token, body: { p_member_id: member.data.id } });
+            assert.ok(status.data.estimated_minutes >= 1,
+                'первому участнику прогноз всё равно должен что-то показать');
+        } finally {
+            await api(`/rest/v1/queues?id=eq.${freshId}`, { method: 'DELETE', token });
+        }
+    });
+
     test('негодный токен даёт именно PGRST301', async () => {
         // На этот код опирается повтор запроса со свежей сессией
         // (supabaseService.isAuthFailure). Если Supabase сменит код,

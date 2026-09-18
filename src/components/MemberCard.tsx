@@ -164,13 +164,7 @@ function MemberCard({
                         title={metaText}
                         onClick={member.note && canEditNote ? openNote : undefined}
                     >
-                        {/* Заметка идёт первой: строка подрезается с хвоста,
-                            а она здесь главное. Завести её предлагает меню —
-                            подпись «Сделать заметку» в строку не влезала
-                            и вытесняла состояние. */}
-                        {member.note && <span className={styles.metaNote}>{member.note}</span>}
                         <span className={isOver ? styles.metaOverdue : undefined}>
-                            {member.note ? '   ' : ''}
                             {isOver ? 'Просрочено' : statusText}
                         </span>
                         {member.service_name && (
@@ -178,6 +172,21 @@ function MemberCard({
                         )}
                     </p>
                 </div>
+
+                {/* Заметка — отдельным блоком, а не хвостом служебной строки:
+                    её писал человек, и в общей строке она читалась как
+                    системная подпись. На широком экране стоит посередине,
+                    на телефоне переносится под сведения — так и состояние
+                    остаётся видно, и заметке хватает трёх строк. */}
+                {member.note && (
+                    <p
+                        className={`${styles.noteBlock} ${canEditNote ? styles.noteClickable : ''}`}
+                        title={member.note}
+                        onClick={canEditNote ? openNote : undefined}
+                    >
+                        {member.note}
+                    </p>
+                )}
 
                 <div className={styles.marks}>
                     {/* Закрытому время уже не задают: приём окончен, и

@@ -145,6 +145,13 @@ export const getQueueById = (queueId: string) =>
     withSession<Queue | null>('getQueueById', () =>
         supabase.from('queues').select('*').eq('id', queueId).maybeSingle());
 
+/** Примечание очереди — то, что участник видит на экране входа. */
+export const updateQueueDescription = (queueId: string, description: string | null) =>
+    withSession('updateQueueDescription', () => supabase
+        .from('queues')
+        .update({ description: description?.trim() || null })
+        .eq('id', queueId));
+
 export const updateQueueStatus = (queueId: string, status: string) =>
     withSession('updateQueueStatus', () => supabase.from('queues').update({ status }).eq('id', queueId));
 

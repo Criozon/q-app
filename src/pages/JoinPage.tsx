@@ -20,6 +20,10 @@ function JoinPage() {
     const navigate = useNavigate();
     
     const [queue, setQueue] = useState<JoinDetails['queue']>(null);
+    // Сколько людей впереди и сколько примерно длится приём — именно это
+    // решает, вставать сейчас или зайти позже.
+    const [waitingCount, setWaitingCount] = useState(0);
+    const [avgMinutes, setAvgMinutes] = useState<number | null>(null);
     const [services, setServices] = useState<JoinDetails['services']>([]);
     const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
     const [memberName, setMemberName] = useState('');
@@ -46,6 +50,8 @@ function JoinPage() {
 
                 setQueue(detailsQueue);
                 setServices(detailsServices || []);
+                setWaitingCount(detailsData?.waiting_count ?? 0);
+                setAvgMinutes(detailsData?.avg_service_minutes ?? null);
 
                 const session = getActiveSession();
                 if (session) {
@@ -82,6 +88,8 @@ function JoinPage() {
                 const { data } = await service.getQueueForJoin(shortId);
                 if (!data?.queue) return;
                 setQueue(prev => (prev ? { ...prev, ...data.queue } : data.queue));
+                setWaitingCount(data.waiting_count ?? 0);
+                setAvgMinutes(data.avg_service_minutes ?? null);
             } catch (err) {
                 // Молча для человека: временная сетевая заминка не должна
                 // ломать страницу. Но в журнал пишем — иначе такие сбои
@@ -160,6 +168,16 @@ function JoinPage() {
                 <p className={styles.subheading}>Вы присоединяетесь к очереди:</p>
                 <h1 className={styles.title}>{queue?.name}</h1>
                 {queue?.description && <p className={styles.description}>{queue.description}</p>}
+                {/* Средней длительности может не быть: пока никого не
+                    обслужили, мерить нечего, и выдумывать число не станем. */}
+                {queue?.status !== 'paused' && (
+                    <p className={styles.queueFacts}>
+                        {waitingCount === 0
+                            ? 'Сейчас никто не ждёт'
+                            : `Сейчас в очереди: ${waitingCount}`}
+                        {avgMinutes !== null && ` · приём занимает около ${avgMinutes} мин`}
+                    </p>
+                )}
             </div>
             <Card>
                 {queue?.status === 'paused' ? (

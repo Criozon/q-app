@@ -38,6 +38,10 @@ export interface ServiceDraft {
 export interface JoinDetails {
     queue: Pick<Queue, 'id' | 'name' | 'description' | 'status'> | null;
     services: Pick<Service, 'id' | 'name'>[];
+    /** Сколько человек ждёт прямо сейчас. */
+    waiting_count: number;
+    /** Средняя длительность приёма. null — мерить ещё нечего. */
+    avg_service_minutes: number | null;
 }
 
 /**

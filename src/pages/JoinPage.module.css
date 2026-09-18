@@ -110,3 +110,11 @@
   border-color: var(--accent-blue);
   font-weight: 600;
 }
+/* Сколько людей впереди и сколько длится приём — это решает, вставать
+   сейчас или зайти позже. */
+.queueFacts {
+  margin: 8px 0 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
