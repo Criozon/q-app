@@ -58,6 +58,8 @@ function AdminPage() {
     const [editableServices, setEditableServices] = useState<ServiceDraft[]>([]);
     const [initialServicesState, setInitialServicesState] = useState<ServiceDraft[]>([]);
     const [desiredWindowCount, setDesiredWindowCount] = useState(0);
+    // Примечание пишут при создании очереди, а поправить потом было негде.
+    const [descriptionDraft, setDescriptionDraft] = useState('');
     const [isSavingSettings, setIsSavingSettings] = useState(false);
     
     useEffect(() => {
@@ -75,8 +77,9 @@ function AdminPage() {
             if (windows) {
                 setDesiredWindowCount(windows.length);
             }
+            setDescriptionDraft(queue?.description ?? '');
         }
-    }, [isSettingsModalOpen, services, windows]);
+    }, [isSettingsModalOpen, services, windows, queue?.description]);
     
     const handleAddService = async () => {
         if (!newServiceName.trim()) return toast.error('Название услуги не может быть пустым.');
@@ -129,7 +132,16 @@ function AdminPage() {
                 .filter(initialService => !editableServices.some(finalService => finalService.id === initialService.id))
                 .map(deletedService => service.removeService(deletedService.id));
 
-            await Promise.all([...assignmentPromises, ...deletedServicePromises]);
+            const descriptionChanged =
+                descriptionDraft.trim() !== (queue?.description ?? '').trim();
+
+            await Promise.all([
+                ...assignmentPromises,
+                ...deletedServicePromises,
+                ...(descriptionChanged
+                    ? [service.updateQueueDescription(queue!.id, descriptionDraft)]
+                    : []),
+            ]);
             
             toast.success('Настройки успешно сохранены!', { id: toastId });
         } catch (err) {
@@ -526,6 +538,16 @@ function AdminPage() {
             <Modal isOpen={isSettingsModalOpen} onClose={handleSaveSettings} title="Настройки очереди">
                 <Card className={homeStyles.form}>
                     <div className={homeStyles.formRow}>
+                      <label className={homeStyles.formLabel}>Примечание для участников</label>
+                      <textarea
+                          className={styles.descriptionInput}
+                          value={descriptionDraft}
+                          onChange={(event) => setDescriptionDraft(event.target.value)}
+                          placeholder="Например: приём по талонам, при себе паспорт"
+                          maxLength={300}
+                          rows={2}
+                      />
+
                       <label className={homeStyles.formLabel}>Количество окон</label>
                       <NumberStepper 
                         value={desiredWindowCount}

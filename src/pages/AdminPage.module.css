@@ -281,8 +281,9 @@
 
 .callNextButton,
 
+/* Тот же светофорный зелёный, что и на карточках. */
 .callNextButton {
-  background-color: var(--accent-blue);
+  background-color: var(--accent-green);
 }
 
 .settingsGridInModal {
@@ -465,4 +466,27 @@
 .logButton {
   background-color: #8e8e93;
   flex: 1;
+}
+
+/* Примечание очереди правится в настройках — при создании его пишут,
+   а поправить потом было негде. */
+.descriptionInput {
+  font-family: inherit;
+  /* Меньше 16px — и Safari на iPhone зумит страницу при фокусе. */
+  font-size: 16px;
+  line-height: 1.4;
+  color: var(--text-primary);
+  background-color: var(--background);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 12px;
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  margin-bottom: 16px;
+}
+
+.descriptionInput:focus {
+  outline: none;
+  border-color: var(--accent-blue);
 }
